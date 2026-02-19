@@ -1,8 +1,25 @@
 # ChamberOrchestra File Bundle
 
-A Symfony bundle for automatic file upload handling on Doctrine ORM entities. Mark your entity with PHP attributes, and the bundle transparently uploads, injects, and removes files through Doctrine lifecycle events.
+[![Latest Stable Version](https://img.shields.io/packagist/v/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
+[![License](https://img.shields.io/packagist/l/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
+[![PHP Version](https://img.shields.io/packagist/php-v/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
 
-Supports local filesystem and Amazon S3 storage backends, multiple named storages, pluggable naming strategies, and Doctrine embeddables.
+A Symfony bundle for automatic file upload and image upload handling on Doctrine ORM entities. Mark your entity with PHP attributes, and the bundle transparently uploads, injects, and removes files through Doctrine lifecycle events.
+
+Supports local filesystem and Amazon S3 storage backends, multiple named storages, CDN integration, pluggable naming strategies, file archiving, and Doctrine embeddables.
+
+### Features
+
+- **Automatic file uploads** via Doctrine lifecycle events — no manual upload logic
+- **Multiple storage backends** — local filesystem, Amazon S3, MinIO
+- **Per-entity storage** — different entities can use different storages
+- **CDN support** — serve files through CloudFront, Cloudflare, or any CDN
+- **Private/secure storage** — store files outside the web root with controlled access
+- **File archiving** — archive files before deletion instead of permanent removal
+- **Image support** — dimensions, EXIF metadata, orientation detection
+- **Doctrine embeddables** — uploadable fields inside embedded objects
+- **Pluggable naming strategies** — hashing (default), original name, or custom
+- **Symfony Serializer integration** — normalizes files to absolute URLs
 
 ## Requirements
 

@@ -1,16 +1,24 @@
 {
   "name": "chamber-orchestra/file-bundle",
   "type": "symfony-bundle",
-  "description": "Symfony bundle for automatic file upload handling on Doctrine ORM entities",
+  "description": "Symfony bundle for automatic file upload handling on Doctrine ORM entities with S3, CDN, and multiple storage support",
   "keywords": [
     "symfony",
     "symfony-bundle",
     "file",
+    "file-upload",
     "upload",
     "doctrine",
     "orm",
     "storage",
-    "s3"
+    "s3",
+    "aws",
+    "cdn",
+    "image",
+    "image-upload",
+    "file-manager",
+    "file-storage",
+    "minio"
   ],
   "homepage": "https://github.com/chamber-orchestra/file-bundle",
   "license": "MIT",
