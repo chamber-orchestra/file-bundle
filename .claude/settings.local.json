@@ -37,7 +37,10 @@
       "Bash(composer cs-check:*)",
       "Bash(composer require:*)",
       "Bash(php -r:*)",
-      "Bash(php vendor/bin/phpunit:*)"
+      "Bash(php vendor/bin/phpunit:*)",
+      "Bash(git mv:*)",
+      "Bash(./vendor/bin/php-cs-fixer fix:*)",
+      "Bash(./vendor/bin/phpstan:*)"
     ]
   }
 }

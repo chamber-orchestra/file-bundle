@@ -2,16 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\EventSubscriber;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\DoctrineExtensionsBundle\Util\ClassUtils;
-use Dev\FileBundle\Handler\HandlerInterface;
-use Dev\FileBundle\Mapping\Configuration\UploadableConfiguration;
-use Dev\FileBundle\Mapping\Helper\Behaviour;
-use Dev\MetadataBundle\EventSubscriber\AbstractDoctrineListener;
-use Dev\MetadataBundle\Helper\MetadataArgs;
+namespace ChamberOrchestra\FileBundle\EventSubscriber;
+
+use ChamberOrchestra\FileBundle\Handler\Handler;
+use ChamberOrchestra\FileBundle\Mapping\Configuration\UploadableConfiguration;
+use ChamberOrchestra\FileBundle\Mapping\Helper\Behaviour;
+use ChamberOrchestra\MetadataBundle\EventSubscriber\AbstractDoctrineListener;
+use ChamberOrchestra\MetadataBundle\Helper\MetadataArgs;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
+use Doctrine\Common\Util\ClassUtils;
 use Doctrine\ORM\Event\OnFlushEventArgs;
+use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Event\PreFlushEventArgs;
 use Doctrine\ORM\Events;
@@ -23,9 +31,21 @@ use Doctrine\Persistence\Proxy;
 #[AsDoctrineListener(Events::postFlush)]
 class FileSubscriber extends AbstractDoctrineListener
 {
+    /** @var array<int, array{string, string, array<string, string>}> */
     private array $pendingRemove = [];
+    /** @var array<int, array{string, string, array<string, string>}> */
+    private array $pendingArchive = [];
 
-    public function __construct(private readonly HandlerInterface $handler)
+    /**
+     * Caches which entity classes are uploadable to avoid repeated metadata lookups.
+     * This is the main performance optimization: postLoad and preFlush run for every
+     * entity, but typically only a few classes are uploadable.
+     *
+     * @var array<class-string, bool>
+     */
+    private array $uploadableClassCache = [];
+
+    public function __construct(private readonly Handler $handler)
     {
     }
 
@@ -33,12 +53,21 @@ class FileSubscriber extends AbstractDoctrineListener
     {
         $entity = $event->getObject();
         $em = $event->getObjectManager();
+        $className = ClassUtils::getClass($entity);
 
-        $metadata = $this->reader->getExtensionMetadata($em, ClassUtils::getClass($entity));
-        /** @var UploadableConfiguration $config */
-        if (null === $config = $metadata->getConfiguration(UploadableConfiguration::class)) {
+        if (false === ($this->uploadableClassCache[$className] ?? null)) {
             return;
         }
+
+        $metadata = $this->requireReader()->getExtensionMetadata($em, $className);
+        $config = $metadata->getConfiguration(UploadableConfiguration::class);
+        if (!$config instanceof UploadableConfiguration) {
+            $this->uploadableClassCache[$className] = false;
+
+            return;
+        }
+
+        $this->uploadableClassCache[$className] = true;
 
         foreach ($config->getUploadableFieldNames() as $fieldName) {
             $this->handler->inject($metadata, $entity, $fieldName);
@@ -50,23 +79,53 @@ class FileSubscriber extends AbstractDoctrineListener
         $em = $args->getObjectManager();
 
         $uow = $em->getUnitOfWork();
+
+        foreach ($this->iterateEntities($uow) as $entity) {
+            $className = ClassUtils::getClass($entity);
+
+            if (false === ($this->uploadableClassCache[$className] ?? null)) {
+                continue;
+            }
+
+            $metadata = $this->requireReader()->getExtensionMetadata($em, $className);
+            $config = $metadata->getConfiguration(UploadableConfiguration::class);
+            if (!$config instanceof UploadableConfiguration) {
+                $this->uploadableClassCache[$className] = false;
+
+                continue;
+            }
+
+            $this->uploadableClassCache[$className] = true;
+
+            foreach ($config->getUploadableFieldNames() as $fieldName) {
+                $this->handler->notify($metadata, $entity, $fieldName);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<object>
+     */
+    private function iterateEntities(\Doctrine\ORM\UnitOfWork $uow): iterable
+    {
+        $seen = [];
+
+        foreach ($uow->getScheduledEntityInsertions() as $entity) {
+            $seen[\spl_object_id($entity)] = true;
+            yield $entity;
+        }
+
         foreach ($uow->getIdentityMap() as $entities) {
             foreach ($entities as $entity) {
+                if (isset($seen[\spl_object_id($entity)])) {
+                    continue;
+                }
+
                 if ($entity instanceof Proxy && !$entity->__isInitialized()) {
-                    //skip not initialized entities
                     continue;
                 }
 
-                $metadata = $this->reader->getExtensionMetadata($em, ClassUtils::getClass($entity));
-                /** @var UploadableConfiguration $config */
-                $config = $metadata->getConfiguration(UploadableConfiguration::class);
-                if (null === $config) {
-                    continue;
-                }
-
-                foreach ($config->getUploadableFieldNames() as $fieldName) {
-                    $this->handler->notify($metadata, $entity, $fieldName);
-                }
+                yield $entity;
             }
         }
     }
@@ -91,16 +150,32 @@ class FileSubscriber extends AbstractDoctrineListener
         }
     }
 
-    /**
-     * Only process Behaviour::REMOVE and entities which are already has valid metadata.
-     */
-    public function postFlush(): void
+    public function postFlush(PostFlushEventArgs $args): void
     {
-        /** @var $entity object */
-        /** @var $fields string[] */
-        while ([$entity, $fields] = \array_shift($this->pendingRemove)) {
+        $pendingRemove = $this->pendingRemove;
+        $this->pendingRemove = [];
+
+        $pendingArchive = $this->pendingArchive;
+        $this->pendingArchive = [];
+
+        foreach ($pendingRemove as [$entityClass, $storageName, $fields]) {
             foreach ($fields as $relativePath) {
-                $this->handler->remove($entity, $relativePath);
+                try {
+                    $this->handler->remove($entityClass, $storageName, $relativePath);
+                } catch (\Throwable) {
+                    // Individual file removal failures must not abort remaining removals.
+                    // The database transaction already succeeded at this point.
+                }
+            }
+        }
+
+        foreach ($pendingArchive as [$entityClass, $storageName, $fields]) {
+            foreach ($fields as $relativePath) {
+                try {
+                    $this->handler->archive($storageName, $relativePath);
+                } catch (\Throwable) {
+                    // Individual archive failures must not abort remaining operations.
+                }
             }
         }
     }
@@ -109,12 +184,13 @@ class FileSubscriber extends AbstractDoctrineListener
     {
         $em = $args->entityManager;
         $entity = $args->entity;
-        $config = $args->configuration;
         $metadata = $args->extensionMetadata;
+
+        /** @var UploadableConfiguration $config */
+        $config = $args->configuration;
 
         $uow = $em->getUnitOfWork();
         $changeSet = $uow->getEntityChangeSet($entity);
-        // restrict to fields that changed
         $fields = \array_intersect($config->getMappedByFieldNames(), \array_keys($changeSet));
         $class = $em->getClassMetadata(ClassUtils::getClass($entity));
 
@@ -128,12 +204,13 @@ class FileSubscriber extends AbstractDoctrineListener
 
     private function doUpload(MetadataArgs $args): void
     {
-        $em = $args->entityManager;
         $entity = $args->entity;
-        $config = $args->configuration;
         $metadata = $args->extensionMetadata;
 
-        $uow = $em->getUnitOfWork();
+        /** @var UploadableConfiguration $config */
+        $config = $args->configuration;
+
+        $uow = $args->entityManager->getUnitOfWork();
         $changeSet = $uow->getEntityChangeSet($entity);
         $fields = \array_intersect($config->getMappedByFieldNames(), \array_keys($changeSet));
 
@@ -150,53 +227,73 @@ class FileSubscriber extends AbstractDoctrineListener
     {
         $em = $args->entityManager;
         $entity = $args->entity;
-        $config = $args->configuration;
 
-        if (Behaviour::REMOVE !== $config->getBehaviour()) {
+        /** @var UploadableConfiguration $config */
+        $config = $args->configuration;
+        $behaviour = $config->getBehaviour();
+
+        if (Behaviour::Keep === $behaviour) {
             return;
         }
 
         $uow = $em->getUnitOfWork();
         $changeSet = $uow->getEntityChangeSet($entity);
-        $fields = \array_intersect($config->getFieldNames(), \array_keys($changeSet));
+        $fields = \array_intersect($config->getMappedByFieldNames(), \array_keys($changeSet));
 
-        if (!count($fields)) {
+        if (!\count($fields)) {
             return;
         }
 
-        $remove = [];
+        $paths = [];
         foreach ($fields as $field) {
-            [$old,] = $changeSet[$field];
-            if (null === $old) {
+            /** @var array{mixed, mixed} $change */
+            $change = $changeSet[$field];
+            $old = $change[0];
+            if (!\is_string($old)) {
                 continue;
             }
-            $remove[$field] = $old;
+            $paths[$field] = $old;
         }
 
-        $this->pendingRemove[\spl_object_hash($entity)] = [$entity, $remove];
+        $entry = [ClassUtils::getClass($entity), $config->getStorage(), $paths];
+
+        match ($behaviour) {
+            Behaviour::Remove => $this->pendingRemove[\spl_object_id($entity)] = $entry,
+            Behaviour::Archive => $this->pendingArchive[\spl_object_id($entity)] = $entry,
+        };
     }
 
     private function doRemove(MetadataArgs $args): void
     {
         $entity = $args->entity;
-        $config = $args->configuration;
         $metadata = $args->extensionMetadata;
 
-        if (Behaviour::REMOVE !== $config->getBehaviour()) {
+        /** @var UploadableConfiguration $config */
+        $config = $args->configuration;
+        $behaviour = $config->getBehaviour();
+
+        if (Behaviour::Keep === $behaviour) {
             return;
         }
 
-        $remove = [];
+        $paths = [];
         foreach ($config->getUploadableFieldNames() as $field) {
             $mapping = $config->getMapping($field);
-            $relativePath = $metadata->getFieldValue($entity, $mapping['mappedBy']);
-            if (null === $relativePath) {
+            /** @var string $mappedBy */
+            $mappedBy = $mapping['mappedBy'];
+            $relativePath = $metadata->getFieldValue($entity, $mappedBy);
+            if (!\is_string($relativePath)) {
                 continue;
             }
 
-            $remove[$field] = $relativePath;
+            $paths[$field] = $relativePath;
         }
 
-        $this->pendingRemove[\spl_object_hash($entity)] = [$entity, $remove];
+        $entry = [ClassUtils::getClass($entity), $config->getStorage(), $paths];
+
+        match ($behaviour) {
+            Behaviour::Remove => $this->pendingRemove[\spl_object_id($entity)] = $entry,
+            Behaviour::Archive => $this->pendingArchive[\spl_object_id($entity)] = $entry,
+        };
     }
 }

@@ -2,16 +2,25 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Model;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\Exception\RuntimeException;
+namespace ChamberOrchestra\FileBundle\Model;
+
+use ChamberOrchestra\FileBundle\Exception\RuntimeException;
 
 /**
  * @mixin File
  */
 trait ImageTrait
 {
+    /** @var array<int|string, mixed>|null */
     private ?array $imageSize = null;
+    /** @var array<string, mixed>|null */
     private ?array $metadata = null;
 
     public function isImage(): bool
@@ -20,11 +29,13 @@ trait ImageTrait
             return false;
         }
 
-        return \str_contains($this->getMimeType(), 'image/');
+        $mimeType = $this->getMimeType();
+
+        return null !== $mimeType && \str_contains($mimeType, 'image/');
     }
 
     /**
-     * @return array
+     * @return array<int|string, mixed>
      */
     public function getImageSize(): array
     {
@@ -34,7 +45,7 @@ trait ImageTrait
 
         if (null === $this->imageSize) {
             $size = @\getimagesize($this->getRealPath());
-            if (empty($size) || (0 === $size[0]) || (0 === $size[1])) {
+            if (false === $size || 0 === $size[0] || 0 === $size[1]) {
                 throw new RuntimeException("Can't get image sizes");
             }
             $this->imageSize = $size;
@@ -43,38 +54,40 @@ trait ImageTrait
         return $this->imageSize;
     }
 
-    /**
-     * @return int
-     */
     public function getWidth(): int
     {
-        return $this->getImageSize()[0];
+        $size = $this->getImageSize();
+        /** @var int $width */
+        $width = $size[0];
+
+        return $width;
     }
 
-    /**
-     * @return int
-     */
     public function getHeight(): int
     {
-        return $this->getImageSize()[1];
+        $size = $this->getImageSize();
+        /** @var int $height */
+        $height = $size[1];
+
+        return $height;
     }
 
-    /**
-     * @return float
-     */
     public function getRatio(): float
     {
         return (float) $this->getWidth() / $this->getHeight();
     }
 
-    /**
-     * @return int
-     */
     public function getOrientation(): int
     {
-        return $this->getMetadata()['Orientation'] ?? 0;
+        $metadata = $this->getMetadata();
+        $orientation = $metadata['Orientation'] ?? 0;
+
+        return \is_int($orientation) ? $orientation : 0;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getMetadata(): array
     {
         if (!$this->isImage()) {
@@ -82,9 +95,12 @@ trait ImageTrait
         }
 
         if (null === $this->metadata) {
+            /** @var array<string, mixed> $data */
             $data = [];
             if (\function_exists('exif_read_data')) {
-                $data = @\exif_read_data($this->getRealPath());
+                /** @var array<string, mixed>|false $exif */
+                $exif = @\exif_read_data($this->getRealPath());
+                $data = false !== $exif ? $exif : [];
             }
             $this->metadata = $data;
         }
@@ -112,14 +128,6 @@ trait ImageTrait
             5, 6 => 90,
             7, 8 => -90,
             default => 0,
-        };
-    }
-
-    private function isFlipped(int $orientation): bool
-    {
-        return match ($orientation) {
-            2, 4, 5, 7 => true,
-            default => false,
         };
     }
 }

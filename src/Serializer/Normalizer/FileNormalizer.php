@@ -2,26 +2,39 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Serializer\Normalizer;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\Model\File;
-use Symfony\Component\HttpFoundation\RequestStack;
+namespace ChamberOrchestra\FileBundle\Serializer\Normalizer;
+
+use ChamberOrchestra\FileBundle\Model\File;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 class FileNormalizer implements NormalizerInterface
 {
-    public function __construct(private RequestStack $stack)
-    {
+    public function __construct(
+        private readonly string $baseUrl = '',
+    ) {
     }
 
-    public function normalize($object, ?string $format = null, array $context = []): string|null
+    public function normalize($object, ?string $format = null, array $context = []): ?string
     {
-        $base = '';
-        if ($request = $this->stack->getCurrentRequest()) {
-            $base = $request->getSchemeAndHttpHost();
+        /** @var File $object */
+        $uri = $object->getUri();
+
+        if (null === $uri) {
+            return null;
         }
 
-        return $base.$object?->getUri();
+        if (\str_starts_with($uri, 'http://') || \str_starts_with($uri, 'https://')) {
+            return $uri;
+        }
+
+        return \rtrim($this->baseUrl, '/').$uri;
     }
 
     public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
@@ -29,10 +42,13 @@ class FileNormalizer implements NormalizerInterface
         return $data instanceof File;
     }
 
+    /**
+     * @return array<string, bool>
+     */
     public function getSupportedTypes(?string $format): array
     {
         return [
-            File::class => false,
+            File::class => true,
         ];
     }
 }

@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Storage;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\NamingStrategy\NamingStrategyInterface;
+namespace ChamberOrchestra\FileBundle\Storage;
+
+use ChamberOrchestra\FileBundle\NamingStrategy\NamingStrategyInterface;
 use Symfony\Component\HttpFoundation\File\File;
 
 /**
@@ -39,5 +46,10 @@ interface StorageInterface
     /**
      * Resolves the URI for a file based on the specified object.
      */
-    public function resolveUri(string $path): string|null;
+    public function resolveUri(string $path): ?string;
+
+    /**
+     * Downloads a file from storage to a local target path.
+     */
+    public function download(string $relativePath, string $targetPath): void;
 }

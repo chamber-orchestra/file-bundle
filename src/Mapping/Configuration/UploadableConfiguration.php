@@ -2,26 +2,39 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Mapping\Configuration;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\Mapping\Annotation\Uploadable;
-use Dev\FileBundle\Mapping\Helper\Behaviour;
-use Dev\FileBundle\NamingStrategy\HashingNamingStrategy;
-use Dev\MetadataBundle\Mapping\ORM\AbstractMetadataConfiguration;
+namespace ChamberOrchestra\FileBundle\Mapping\Configuration;
+
+use ChamberOrchestra\FileBundle\Mapping\Attribute\Uploadable;
+use ChamberOrchestra\FileBundle\Mapping\Helper\Behaviour;
+use ChamberOrchestra\FileBundle\NamingStrategy\HashingNamingStrategy;
+use ChamberOrchestra\MetadataBundle\Mapping\ORM\AbstractMetadataConfiguration;
 
 class UploadableConfiguration extends AbstractMetadataConfiguration
 {
-    private string $prefix;
-    private string $behaviour;
-    private string $namingStrategy;
+    private string $prefix = '';
+    private Behaviour $behaviour = Behaviour::Remove;
+    private string $namingStrategy = HashingNamingStrategy::class;
+    private string $storage = 'default';
+    /** @var array<string, string>|null */
     private ?array $uploadableFieldsNames = null;
+    /** @var array<string, string>|null */
     private ?array $mappedByFieldsNames = null;
 
-    public function __construct(?Uploadable $annotation)
+    public function __construct(?Uploadable $annotation = null)
     {
-        $this->prefix = $annotation ? $annotation->prefix : '';
-        $this->behaviour = $annotation ? $annotation->behaviour : Behaviour::REMOVE;
-        $this->namingStrategy = $annotation ? $annotation->namingStrategy : HashingNamingStrategy::class;
+        if (null !== $annotation) {
+            $this->prefix = $annotation->prefix;
+            $this->behaviour = $annotation->behaviour;
+            $this->namingStrategy = $annotation->namingStrategy;
+            $this->storage = $annotation->storage;
+        }
     }
 
     public function getPrefix(): string
@@ -29,16 +42,24 @@ class UploadableConfiguration extends AbstractMetadataConfiguration
         return $this->prefix;
     }
 
-    public function getBehaviour(): string|null
+    public function getBehaviour(): Behaviour
     {
         return $this->behaviour;
     }
 
-    public function getNamingStrategy(): string|null
+    public function getNamingStrategy(): string
     {
         return $this->namingStrategy;
     }
 
+    public function getStorage(): string
+    {
+        return $this->storage;
+    }
+
+    /**
+     * @return array<string, string>
+     */
     public function getUploadableFieldNames(): array
     {
         if (null === $this->uploadableFieldsNames) {
@@ -54,13 +75,18 @@ class UploadableConfiguration extends AbstractMetadataConfiguration
         return $this->uploadableFieldsNames;
     }
 
+    /**
+     * @return array<string, string>
+     */
     public function getMappedByFieldNames(): array
     {
         if (null === $this->mappedByFieldsNames) {
             $this->mappedByFieldsNames = [];
             foreach ($this->getUploadableFieldNames() as $fieldName) {
                 $mapping = $this->mappings[$fieldName];
-                $this->mappedByFieldsNames[$mapping['mappedBy']] = $mapping['mappedBy'];
+                /** @var string $mappedBy */
+                $mappedBy = $mapping['mappedBy'];
+                $this->mappedByFieldsNames[$mappedBy] = $mappedBy;
             }
         }
 
@@ -73,18 +99,22 @@ class UploadableConfiguration extends AbstractMetadataConfiguration
             'prefix' => $this->prefix,
             'behaviour' => $this->behaviour,
             'namingStrategy' => $this->namingStrategy,
+            'storage' => $this->storage,
             'uploadableFieldsNames' => $this->uploadableFieldsNames,
+            'mappedByFieldsNames' => $this->mappedByFieldsNames,
         ]);
     }
 
     public function __unserialize(array $data): void
     {
         parent::__unserialize($data);
-        [
-            'prefix' => $this->prefix,
-            'behaviour' => $this->behaviour,
-            'namingStrategy' => $this->namingStrategy,
-            'uploadableFieldsNames' => $this->uploadableFieldsNames,
-        ] = $data;
+
+        /** @var array{mappings: array<string, array<string, mixed>>, prefix: string, behaviour: Behaviour, namingStrategy: string, storage: string, uploadableFieldsNames: array<string, string>|null, mappedByFieldsNames: array<string, string>|null} $data */
+        $this->prefix = $data['prefix'];
+        $this->behaviour = $data['behaviour'];
+        $this->namingStrategy = $data['namingStrategy'];
+        $this->storage = $data['storage'];
+        $this->uploadableFieldsNames = $data['uploadableFieldsNames'];
+        $this->mappedByFieldsNames = $data['mappedByFieldsNames'];
     }
 }
