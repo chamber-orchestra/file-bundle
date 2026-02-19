@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer install:*)",
+      "Bash(./vendor/bin/phpunit:*)",
+      "Bash(vendor/bin/phpunit:*)",
+      "Bash(composer show:*)",
+      "WebSearch",
+      "WebFetch(domain:php.watch)",
+      "Bash(composer test:*)",
+      "Bash(git status:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(composer validate:*)",
+      "Bash(composer update:*)",
+      "Bash(composer run-script:*)",
+      "Bash(vendor/bin/phpstan analyse:*)",
+      "Bash(git -C /Users/andrewlukin/Work/chamber-orchestra/pagination-bundle status)",
+      "Bash(git -C /Users/andrewlukin/Work/chamber-orchestra/pagination-bundle diff)",
+      "Bash(git -C /Users/andrewlukin/Work/chamber-orchestra/pagination-bundle log --oneline -5)",
+      "Bash(git -C /Users/andrewlukin/Work/chamber-orchestra/pagination-bundle add .github/dependabot.yml .github/workflows/php.yml .gitignore README.md composer.json .php-cs-fixer.dist.php phpstan.neon phpstan-baseline.neon src/ tests/)",
+      "Bash(git -C:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(vendor/bin/php-cs-fixer fix:*)",
+      "Bash(gh pr list:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(composer analyse:*)",
+      "Bash(git stash:*)",
+      "Bash(composer cs-check:*)",
+      "Bash(composer require:*)",
+      "Bash(php -r:*)",
+      "Bash(php vendor/bin/phpunit:*)"
+    ]
+  }
+}
