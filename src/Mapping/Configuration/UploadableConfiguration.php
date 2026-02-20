@@ -109,12 +109,13 @@ class UploadableConfiguration extends AbstractMetadataConfiguration
     {
         parent::__unserialize($data);
 
-        /** @var array{mappings: array<string, array<string, mixed>>, prefix: string, behaviour: Behaviour, namingStrategy: string, storage: string, uploadableFieldsNames: array<string, string>|null, mappedByFieldsNames: array<string, string>|null} $data */
-        $this->prefix = $data['prefix'];
-        $this->behaviour = $data['behaviour'];
-        $this->namingStrategy = $data['namingStrategy'];
-        $this->storage = $data['storage'];
-        $this->uploadableFieldsNames = $data['uploadableFieldsNames'];
-        $this->mappedByFieldsNames = $data['mappedByFieldsNames'];
+        /** @var array{prefix: string, behaviour: Behaviour, namingStrategy: string, storage: string, uploadableFieldsNames: array<string, string>|null, mappedByFieldsNames: array<string, string>|null} $typed */
+        $typed = $data;
+        $this->prefix = $typed['prefix'];
+        $this->behaviour = $typed['behaviour'];
+        $this->namingStrategy = $typed['namingStrategy'];
+        $this->storage = $typed['storage'];
+        $this->uploadableFieldsNames = $typed['uploadableFieldsNames'];
+        $this->mappedByFieldsNames = $typed['mappedByFieldsNames'];
     }
 }
