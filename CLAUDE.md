@@ -113,13 +113,17 @@ All events carry `$entityClass` (the fully-qualified entity class name via `Clas
 
 **PreRemoveEvent** / **PostRemoveEvent** (`src/Events/`): Dispatched before/after file deletion. Both extend `AbstractEvent` which carries readonly `$entityClass`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`. Subscribe to these to hook into file removal (e.g., clearing CDN cache, removing thumbnails).
 
+### Form Type
+
+**FileType** (`src/Form/Type/FileType.php`): Compound Symfony form type for file uploads. Block prefix: `chamber_orchestra_file`. Contains a `file` child (Symfony `FileType`) and an optional `delete` checkbox. Uses `$originalFiles` map keyed by `uniqid()` for per-form-instance state to preserve the original `Model\File` across submissions. Options: `multiple`, `mime_types`, `required`, `allow_delete`, `entry_options`, `delete_options`. `POST_SET_DATA` listener stores the original file, `PRE_SUBMIT` restores it if no new upload, `POST_SUBMIT` cleans up the `$originalFiles` entry. `CallbackTransformer` handles compound-to-scalar conversion. `buildView` exposes `original_file`, `allow_delete`, `multiple` to templates. Conditionally registered only when `symfony/form` is installed (checked via `class_exists(AbstractType::class)` in the extension). The `Form` directory is excluded from autowiring in `services.php`.
+
 ### Serializer
 
 **FileNormalizer** (`src/Serializer/Normalizer/FileNormalizer.php`): Symfony Serializer normalizer for `Model\File`. Constructed with `$baseUrl` (wired to `%env(APP_URL)%` by the bundle extension). Normalizes to an absolute URL by prepending `$baseUrl` to relative URIs. Absolute URIs (starting with `http://` or `https://`, e.g. from S3 or CDN storage) are returned as-is. Per-storage CDN is configured by setting the storage's `uri_prefix` to the CDN URL.
 
 ### Service Configuration
 
-Services are autowired and autoconfigured via `src/Resources/config/services.php`. The `Handler` is registered as `lazy: true`. Directories excluded from autowiring: `DependencyInjection`, `Resources`, `ExceptionInterface`, `NamingStrategy`, `Model`, `Mapping`, `Entity`, `Events`, `Storage`.
+Services are autowired and autoconfigured via `src/Resources/config/services.php`. The `Handler` is registered as `lazy: true`. Directories excluded from autowiring: `DependencyInjection`, `Resources`, `ExceptionInterface`, `NamingStrategy`, `Model`, `Mapping`, `Entity`, `Events`, `Storage`, `Form`.
 
 Bundle configuration key is `chamber_orchestra_file`. Storages are defined under `storages` as a named map. Each storage has: `enabled` (default `true`), `driver` (`file_system` or `s3`), `path`, `uri_prefix` (null for private storage, or a CDN URL for absolute URIs), and S3-specific `bucket`, `region`, `endpoint`. S3 storages require `bucket` and `region` (validated at the Configuration tree level). The `default_storage` option selects which storage is the default (if omitted, the first enabled storage is used). The `archive_path` option (default `%kernel.project_dir%/var/archive`) sets the directory for `Behaviour::Archive`. The `FileNormalizer` receives `%env(APP_URL)%` as its base URL for resolving relative URIs. Entities select storage via `#[Uploadable(storage: 'name')]`.
 
@@ -137,8 +141,8 @@ Bundle configuration key is `chamber_orchestra_file`. Storages are defined under
 ## Dependencies
 
 - Requires PHP 8.5, Symfony 8.0 components (`dependency-injection`, `config`, `framework-bundle`, `runtime`, `options-resolver`), and `chamber-orchestra/metadata-bundle` 8.0
-- Dev: PHPUnit 13, `symfony/test-pack`, `symfony/mime`, `symfony/serializer`, `aws/aws-sdk-php`, `friendsofphp/php-cs-fixer`, `phpstan/phpstan`
-- Suggests: `aws/aws-sdk-php` (for S3 storage driver)
+- Dev: PHPUnit 13, `symfony/test-pack`, `symfony/mime`, `symfony/serializer`, `symfony/form`, `symfony/validator`, `aws/aws-sdk-php`, `friendsofphp/php-cs-fixer`, `phpstan/phpstan`
+- Suggests: `aws/aws-sdk-php` (for S3 storage driver), `symfony/form` (for FileType form type), `symfony/validator` (for file validation constraints)
 - Main branch is `main`
 
 ## Testing Conventions

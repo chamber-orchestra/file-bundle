@@ -24,6 +24,7 @@ Supports local filesystem and Amazon S3 storage backends, multiple named storage
 - **Image support** — dimensions, EXIF metadata, orientation detection
 - **Doctrine embeddables** — uploadable fields inside embedded objects
 - **Pluggable naming strategies** — hashing (default), original name, or custom
+- **Symfony Form integration** — compound FileType with delete checkbox and file preservation
 - **Symfony Serializer integration** — normalizes files to absolute URLs
 
 ## Requirements
@@ -502,6 +503,49 @@ class ThumbnailCleanupListener
     }
 }
 ```
+
+## Form Type
+
+The bundle provides a `FileType` form type for handling file uploads in Symfony forms. It is a compound form with a file input and an optional delete checkbox that preserves the original `Model\File` across submissions.
+
+```bash
+composer require symfony/form symfony/validator
+```
+
+### Basic Usage
+
+```php
+use ChamberOrchestra\FileBundle\Form\Type\FileType;
+
+$builder->add('score', FileType::class);
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `multiple` | `bool` | `false` | Allow multiple file uploads |
+| `mime_types` | `array` | `[]` | Allowed MIME types (sets `accept` attribute and validation) |
+| `required` | `bool` | `false` | Whether a file is required |
+| `allow_delete` | `bool` | `true` | Show a delete checkbox (only when `required` is `false`) |
+| `entry_options` | `array` | `[]` | Options passed to the inner Symfony `FileType` |
+| `delete_options` | `array` | `[]` | Options passed to the delete `CheckboxType` |
+
+### With MIME Type Restriction
+
+```php
+$builder->add('score', FileType::class, [
+    'mime_types' => ['application/pdf'],
+    'required' => true,
+]);
+```
+
+### Template Variables
+
+The form view exposes:
+- `original_file` — the original `Model\File` instance (for displaying the current file)
+- `allow_delete` — whether the delete checkbox is shown
+- `multiple` — whether multiple uploads are allowed
 
 ## Serializer Integration
 

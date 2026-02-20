@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace ChamberOrchestra\FileBundle\DependencyInjection;
 
 use Aws\S3\S3Client;
+use ChamberOrchestra\FileBundle\Form\Type\FileType;
 use ChamberOrchestra\FileBundle\Handler\Handler;
 use ChamberOrchestra\FileBundle\Serializer\Normalizer\FileNormalizer;
 use ChamberOrchestra\FileBundle\Storage\FileSystemStorage;
@@ -22,6 +23,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Form\AbstractType;
 use Symfony\Component\HttpKernel\DependencyInjection\ConfigurableExtension;
 
 final class ChamberOrchestraFileExtension extends ConfigurableExtension
@@ -77,6 +79,13 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
         if ($container->hasDefinition(FileNormalizer::class)) {
             $container->getDefinition(FileNormalizer::class)
                 ->setArgument('$baseUrl', '%env(APP_URL)%');
+        }
+
+        if (\class_exists(AbstractType::class)) {
+            $container->register(FileType::class, FileType::class)
+                ->setAutoconfigured(true)
+                ->setPublic(false)
+                ->addTag('form.type');
         }
     }
 
