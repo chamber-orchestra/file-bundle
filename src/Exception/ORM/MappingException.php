@@ -2,27 +2,34 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Exception\ORM;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\Mapping\Annotation\UploadableProperty;
-use Dev\FileBundle\NamingStrategy\NamingStrategyInterface;
+namespace ChamberOrchestra\FileBundle\Exception\ORM;
 
-class MappingException extends \Dev\MetadataBundle\Exception\MappingException
+use ChamberOrchestra\FileBundle\Mapping\Attribute\UploadableProperty;
+use ChamberOrchestra\FileBundle\NamingStrategy\NamingStrategyInterface;
+
+class MappingException extends \ChamberOrchestra\MetadataBundle\Exception\MappingException
 {
     public static function namingStrategyIsNotValidInstance(string $className, string $namingStrategy): MappingException
     {
-        return new self(sprintf('Class "%s" has not valid namingStrategy field. NamingStrategy must implement "%s", but it implements "%s".',
+        return new self(\sprintf('Class "%s" has not valid namingStrategy field. NamingStrategy must implement "%s", but it implements "%s".',
             $className,
             NamingStrategyInterface::class,
-            implode(', ', class_implements($namingStrategy))
+            \implode(', ', \class_implements($namingStrategy) ?: []),
         ));
     }
 
     public static function noUploadedFields(string $className): MappingException
     {
-        return new self(sprintf('Class "%s" must have at least one field marked as "%s"',
+        return new self(\sprintf('Class "%s" must have at least one field marked as "%s"',
             $className,
-            UploadableProperty::class
+            UploadableProperty::class,
         ));
     }
 }

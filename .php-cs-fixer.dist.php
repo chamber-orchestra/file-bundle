@@ -28,6 +28,8 @@ return (new PhpCsFixer\Config())
             'scope' => 'all',
             'strict' => true,
         ],
+        'nullable_type_declaration_for_default_null_value' => true,
+        'nullable_type_declaration' => ['syntax' => 'question_mark'],
     ])
     ->setFinder($finder)
     ->setRiskyAllowed(true)

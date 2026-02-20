@@ -2,19 +2,38 @@
 
 declare(strict_types=1);
 
-namespace Dev\FileBundle\Handler;
+/*
+ * This file is part of the ChamberOrchestra package.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
-use Dev\FileBundle\Events\PostRemoveEvent;
-use Dev\FileBundle\Events\PreRemoveEvent;
-use Dev\FileBundle\Exception\RuntimeException;
-use Dev\FileBundle\Mapping\Configuration\UploadableConfiguration;
-use Dev\FileBundle\Model\File;
-use Dev\FileBundle\NamingStrategy\NamingStrategyFactory;
-use Dev\MetadataBundle\Mapping\ExtensionMetadataInterface;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
+namespace ChamberOrchestra\FileBundle\Handler;
 
-class Handler extends AbstractHandler
+use ChamberOrchestra\FileBundle\Events\PostRemoveEvent;
+use ChamberOrchestra\FileBundle\Events\PostUploadEvent;
+use ChamberOrchestra\FileBundle\Events\PreRemoveEvent;
+use ChamberOrchestra\FileBundle\Events\PreUploadEvent;
+use ChamberOrchestra\FileBundle\Exception\RuntimeException;
+use ChamberOrchestra\FileBundle\Mapping\Configuration\UploadableConfiguration;
+use ChamberOrchestra\FileBundle\Model\File;
+use ChamberOrchestra\FileBundle\NamingStrategy\NamingStrategyFactory;
+use ChamberOrchestra\FileBundle\Storage\StorageInterface;
+use ChamberOrchestra\FileBundle\Storage\StorageResolver;
+use ChamberOrchestra\MetadataBundle\Mapping\ExtensionMetadataInterface;
+use Doctrine\Common\Util\ClassUtils;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+
+class Handler
 {
+    public function __construct(
+        private readonly StorageResolver $storageResolver,
+        private readonly EventDispatcherInterface $dispatcher,
+        private readonly string $archivePath,
+    ) {
+    }
+
     public function notify(ExtensionMetadataInterface $metadata, object $entity, string $fieldName): void
     {
         $file = $metadata->getFieldValue($entity, $fieldName);
@@ -22,77 +41,121 @@ class Handler extends AbstractHandler
             return;
         }
 
+        // File was injected by us — the mappedBy field is already correct
+        if ($file instanceof File) {
+            return;
+        }
+
         $config = $this->getConfig($metadata);
+        $storage = $this->resolveStorage($config);
         $mapping = $config->getMapping($fieldName);
 
         // if the path will be the same, uow changeSet will be empty
-        $path = (null !== $file && $file->isFile()) ? $this->storage->resolveRelativePath($file->getRealPath(), $config->getPrefix()) : null;
-        $metadata->setFieldValue($entity, $mapping['mappedBy'], $path);
+        /** @var string $mappedBy */
+        $mappedBy = $mapping['mappedBy'];
+        $path = (null !== $file && $file->isFile()) ? $storage->resolveRelativePath($file->getRealPath(), $config->getPrefix()) : null;
+        $metadata->setFieldValue($entity, $mappedBy, $path);
     }
 
     public function update(ExtensionMetadataInterface $metadata, object $object, string $fieldName): void
     {
         $config = $this->getConfig($metadata);
+        $storage = $this->resolveStorage($config);
         $mapping = $config->getMapping($fieldName);
-        /** @var \Symfony\Component\HttpFoundation\File\File $file */
-        $file = $metadata->getFieldValue($object, $mapping['inversedBy']);
+        /** @var string $inversedBy */
+        $inversedBy = $mapping['inversedBy'];
+        $file = $metadata->getFieldValue($object, $inversedBy);
 
-        if (null === $file || !$file->isFile()) {
+        if (!$file instanceof \Symfony\Component\HttpFoundation\File\File) {
             $metadata->setFieldValue($object, $fieldName, null);
 
             return;
         }
 
-        if (!$file instanceof \Symfony\Component\HttpFoundation\File\File) {
-            throw new RuntimeException(sprintf("The file is not instance of '%s'. Not internal usage", File::class));
-        }
-
-        $relativePath = $this->storage->resolveRelativePath($file->getRealPath(), $config->getPrefix());
+        $relativePath = $storage->resolveRelativePath($file->getPathname(), $config->getPrefix());
         $metadata->setFieldValue($object, $fieldName, $relativePath);
     }
 
     public function upload(ExtensionMetadataInterface $metadata, object $object, string $fieldName): void
     {
         $config = $this->getConfig($metadata);
+        $storage = $this->resolveStorage($config);
         $mapping = $config->getMapping($fieldName);
-        /** @var \Symfony\Component\HttpFoundation\File\File $file */
-        $file = $metadata->getFieldValue($object, $mapping['inversedBy']);
+        /** @var string $inversedBy */
+        $inversedBy = $mapping['inversedBy'];
+        $file = $metadata->getFieldValue($object, $inversedBy);
 
         if (!$file instanceof \Symfony\Component\HttpFoundation\File\File) {
-            throw new RuntimeException(sprintf("The uploaded file is not instance of '%s'. Not internal usage", UploadedFile::class));
+            throw new RuntimeException(\sprintf("The uploaded file is not an instance of '%s'.", \Symfony\Component\HttpFoundation\File\File::class));
         }
 
+        $entityClass = ClassUtils::getClass($object);
+
+        $this->dispatcher->dispatch(new PreUploadEvent($entityClass, $object, $file, $fieldName));
+
         $namingStrategy = NamingStrategyFactory::create($config->getNamingStrategy());
-        $relativePath = $this->storage->upload($file, $namingStrategy, $config->getPrefix());
+        $relativePath = $storage->upload($file, $namingStrategy, $config->getPrefix());
 
-        $file = $this->storage->resolvePath($relativePath);
-        $uri = $this->storage->resolveUri($relativePath);
+        $resolvedPath = $storage->resolvePath($relativePath);
+        $uri = $storage->resolveUri($relativePath);
 
-        $file = new File($file, $uri);
-        $metadata->setFieldValue($object, $mapping['inversedBy'], $file);
+        $file = new File($resolvedPath, $uri);
+        $metadata->setFieldValue($object, $inversedBy, $file);
+
+        $this->dispatcher->dispatch(new PostUploadEvent($entityClass, $object, $file, $fieldName));
     }
 
-    public function remove(object $object, string|null $relativePath): void
+    public function remove(string $entityClass, string $storageName, ?string $relativePath): void
     {
         if (null === $relativePath) {
             return;
         }
 
-        $resolvedPath = $this->storage->resolvePath($relativePath);
-        $resolvedUri = $this->storage->resolveUri($relativePath);
+        $storage = $this->storageResolver->get($storageName);
 
-        $this->dispatcher->dispatch(new PreRemoveEvent($relativePath, $resolvedPath, $resolvedUri));
-        $this->storage->remove($resolvedPath);
-        $this->dispatcher->dispatch(new PostRemoveEvent($relativePath, $resolvedPath, $resolvedUri));
+        $resolvedPath = $storage->resolvePath($relativePath);
+        $resolvedUri = $storage->resolveUri($relativePath);
+
+        $this->dispatcher->dispatch(new PreRemoveEvent($entityClass, $relativePath, $resolvedPath, $resolvedUri));
+        $storage->remove($resolvedPath);
+        $this->dispatcher->dispatch(new PostRemoveEvent($entityClass, $relativePath, $resolvedPath, $resolvedUri));
+    }
+
+    public function archive(string $storageName, ?string $relativePath): void
+    {
+        if (null === $relativePath) {
+            return;
+        }
+
+        if (\str_contains($relativePath, '..')) {
+            throw new RuntimeException(\sprintf('Path traversal detected: "%s" contains "..".', $relativePath));
+        }
+
+        $storage = $this->storageResolver->get($storageName);
+
+        $archiveTarget = \rtrim($this->archivePath, '/').'/'.\ltrim($relativePath, '/');
+        $archiveDir = \dirname($archiveTarget);
+
+        if (!\is_dir($archiveDir)) {
+            \mkdir($archiveDir, 0755, true);
+        }
+
+        $storage->download($relativePath, $archiveTarget);
+
+        $resolvedPath = $storage->resolvePath($relativePath);
+        $storage->remove($resolvedPath);
     }
 
     public function inject(ExtensionMetadataInterface $metadata, object $object, string $fieldName): void
     {
         $config = $this->getConfig($metadata);
+        $storage = $this->resolveStorage($config);
         $mapping = $config->getMapping($fieldName);
 
-        /** @var string $relativePath */
-        $relativePath = $metadata->getFieldValue($object, $mapping['mappedBy']);
+        /** @var string $mappedBy */
+        $mappedBy = $mapping['mappedBy'];
+        /** @var string|null $relativePath */
+        $relativePath = $metadata->getFieldValue($object, $mappedBy);
 
         if (null === $relativePath) {
             $metadata->setFieldValue($object, $fieldName, null);
@@ -100,18 +163,26 @@ class Handler extends AbstractHandler
             return;
         }
 
-        $path = $this->storage->resolvePath($relativePath);
-        $uri = $this->storage->resolveUri($relativePath);
+        $path = $storage->resolvePath($relativePath);
+        $uri = $storage->resolveUri($relativePath);
 
         $file = new File($path, $uri);
         $metadata->setFieldValue($object, $fieldName, $file);
     }
 
-    private function getConfig(ExtensionMetadataInterface $metadata): ?UploadableConfiguration
+    private function getConfig(ExtensionMetadataInterface $metadata): UploadableConfiguration
     {
-        /** @var UploadableConfiguration $config */
         $config = $metadata->getConfiguration(UploadableConfiguration::class);
 
+        if (!$config instanceof UploadableConfiguration) {
+            throw new RuntimeException(\sprintf("Expected '%s' configuration, got '%s'.", UploadableConfiguration::class, \get_debug_type($config)));
+        }
+
         return $config;
+    }
+
+    private function resolveStorage(UploadableConfiguration $config): StorageInterface
+    {
+        return $this->storageResolver->get($config->getStorage());
     }
 }
