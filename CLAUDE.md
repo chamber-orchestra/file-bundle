@@ -57,15 +57,15 @@ composer run-script cs-check
 - **postLoad**: Calls `Handler::inject()` on each uploadable field — converts stored relative paths into `Model\File` objects with resolved URI.
 - **preFlush**: Iterates the identity map, calls `Handler::notify()` on each uploadable field — detects file changes and sets the `mappedBy` path field so Doctrine's UnitOfWork sees the change.
 - **onFlush**: Processes scheduled insertions (upload + update path), updates (remove old file + upload new + update path), and deletions (queue file removal/archive). Uses `getScheduledEntityInsertions/Updates/Deletions` filtered by `UploadableConfiguration`. Calls `recomputeSingleEntityChangeSet()` after path updates.
-- **postFlush**: Executes deferred file removals from `$pendingRemove` and archives from `$pendingArchive`. Both arrays store `[entityClass, storageName, paths]` tuples. Removals/archives are deferred to postFlush to ensure database changes succeed before files are affected.
+- **postFlush**: Executes deferred file removals from `$pendingRemove` and archives from `$pendingArchive`. Both arrays store `[entity, storageName, paths]` tuples. Removals/archives are deferred to postFlush to ensure database changes succeed before files are affected.
 
 ### Handler
 
 **Handler** (`src/Handler/Handler.php`): Registered as `lazy: true` in the service container. Depends on `StorageResolver`, `EventDispatcherInterface`, and `$archivePath`. Resolves the correct storage per entity via `UploadableConfiguration::getStorage()`. Implements six operations:
 - `notify()`: Skips `Model\File` instances (already injected, mappedBy is correct). For other `File` instances, resolves its relative path via `Storage::resolveRelativePath()` and sets it on the `mappedBy` field. Sets `null` if no file.
 - `update()`: After upload, reads the file from the `inversedBy` field and sets the relative path on the `mappedBy` field via `getPathname()`. Handles null/missing files.
-- `upload()`: Derives entity class via `ClassUtils::getClass()`, dispatches `PreUploadEvent` (with `$entityClass`), creates a `NamingStrategyInterface` instance via `NamingStrategyFactory::create()`, delegates to `Storage::upload()`, wraps the result in a `Model\File` with resolved path and URI, then dispatches `PostUploadEvent` (with `$entityClass`).
-- `remove(string $entityClass, string $storageName, ?string $relativePath)`: Resolves path/URI, dispatches `PreRemoveEvent` (with `$entityClass`), calls `Storage::remove()`, dispatches `PostRemoveEvent` (with `$entityClass`).
+- `upload()`: Dispatches `PreUploadEvent` (with `$entity`), creates a `NamingStrategyInterface` instance via `NamingStrategyFactory::create()`, delegates to `Storage::upload()`, wraps the result in a `Model\File` with resolved path and URI, then dispatches `PostUploadEvent` (with `$entity`).
+- `remove(object $entity, string $storageName, ?string $relativePath)`: Resolves path/URI, dispatches `PreRemoveEvent` (with `$entity`), calls `Storage::remove()`, dispatches `PostRemoveEvent` (with `$entity`).
 - `archive(string $storageName, ?string $relativePath)`: Downloads the file from storage to the archive directory via `Storage::download()`, then removes it from storage. Works with both filesystem and S3 backends.
 - `inject()`: Reads the relative path from `mappedBy`, resolves to absolute path and URI via Storage, creates a `Model\File` instance and sets it on the file property.
 
@@ -107,11 +107,15 @@ composer run-script cs-check
 
 ### Events
 
-All events carry `$entityClass` (the fully-qualified entity class name via `ClassUtils::getClass()`), enabling listeners to filter by entity type.
+All events carry `$entity` (the entity object), enabling listeners to filter by entity type via `instanceof`.
 
-**PreUploadEvent** / **PostUploadEvent** (`src/Events/`): Dispatched before/after file upload. Both carry readonly `$entityClass`, `$entity`, `$file`, and `$fieldName`. `PreUploadEvent` provides the original source file (before storage move). `PostUploadEvent` provides the resolved `Model\File` (after storage). Use `PostUploadEvent` for post-processing such as image resizing, thumbnail generation, or metadata extraction.
+**PreUploadEvent** / **PostUploadEvent** (`src/Events/`): Dispatched before/after file upload. Both carry readonly `$entity`, `$file`, and `$fieldName`. `PreUploadEvent` provides the original source file (before storage move). `PostUploadEvent` provides the resolved `Model\File` (after storage). Use `PostUploadEvent` for post-processing such as image resizing, thumbnail generation, or metadata extraction.
 
-**PreRemoveEvent** / **PostRemoveEvent** (`src/Events/`): Dispatched before/after file deletion. Both extend `AbstractEvent` which carries readonly `$entityClass`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`. Subscribe to these to hook into file removal (e.g., clearing CDN cache, removing thumbnails).
+**PreRemoveEvent** / **PostRemoveEvent** (`src/Events/`): Dispatched before/after file deletion. Both extend `AbstractEvent` which carries readonly `$entity`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`. Subscribe to these to hook into file removal (e.g., clearing CDN cache, removing thumbnails).
+
+### Form Type
+
+**FileType** (`src/Form/Type/FileType.php`): Compound Symfony form type for file uploads. Block prefix: `chamber_orchestra_file`. Contains a `file` child (Symfony `FileType`) and an optional `delete` checkbox. Uses `$originalFiles` map keyed by `uniqid()` for per-form-instance state to preserve the original `Model\File` across submissions. Options: `multiple`, `mime_types`, `required`, `allow_delete`, `entry_options`, `delete_options`. `POST_SET_DATA` listener stores the original file, `PRE_SUBMIT` restores it if no new upload, `POST_SUBMIT` cleans up the `$originalFiles` entry. `CallbackTransformer` handles compound-to-scalar conversion. `buildView` exposes `original_file`, `allow_delete`, `multiple` to templates. Conditionally registered only when `symfony/form` is installed (checked via `class_exists(AbstractType::class)` in the extension). The `Form` directory is excluded from autowiring in `services.php`.
 
 ### Serializer
 
@@ -119,7 +123,7 @@ All events carry `$entityClass` (the fully-qualified entity class name via `Clas
 
 ### Service Configuration
 
-Services are autowired and autoconfigured via `src/Resources/config/services.php`. The `Handler` is registered as `lazy: true`. Directories excluded from autowiring: `DependencyInjection`, `Resources`, `ExceptionInterface`, `NamingStrategy`, `Model`, `Mapping`, `Entity`, `Events`, `Storage`.
+Services are autowired and autoconfigured via `src/Resources/config/services.php`. The `Handler` is registered as `lazy: true`. Directories excluded from autowiring: `DependencyInjection`, `Resources`, `ExceptionInterface`, `NamingStrategy`, `Model`, `Mapping`, `Entity`, `Events`, `Storage`, `Form`.
 
 Bundle configuration key is `chamber_orchestra_file`. Storages are defined under `storages` as a named map. Each storage has: `enabled` (default `true`), `driver` (`file_system` or `s3`), `path`, `uri_prefix` (null for private storage, or a CDN URL for absolute URIs), and S3-specific `bucket`, `region`, `endpoint`. S3 storages require `bucket` and `region` (validated at the Configuration tree level). The `default_storage` option selects which storage is the default (if omitted, the first enabled storage is used). The `archive_path` option (default `%kernel.project_dir%/var/archive`) sets the directory for `Behaviour::Archive`. The `FileNormalizer` receives `%env(APP_URL)%` as its base URL for resolving relative URIs. Entities select storage via `#[Uploadable(storage: 'name')]`.
 
@@ -137,8 +141,8 @@ Bundle configuration key is `chamber_orchestra_file`. Storages are defined under
 ## Dependencies
 
 - Requires PHP 8.5, Symfony 8.0 components (`dependency-injection`, `config`, `framework-bundle`, `runtime`, `options-resolver`), and `chamber-orchestra/metadata-bundle` 8.0
-- Dev: PHPUnit 13, `symfony/test-pack`, `symfony/mime`, `symfony/serializer`, `aws/aws-sdk-php`, `friendsofphp/php-cs-fixer`, `phpstan/phpstan`
-- Suggests: `aws/aws-sdk-php` (for S3 storage driver)
+- Dev: PHPUnit 13, `symfony/test-pack`, `symfony/mime`, `symfony/serializer`, `symfony/form`, `symfony/validator`, `aws/aws-sdk-php`, `friendsofphp/php-cs-fixer`, `phpstan/phpstan`
+- Suggests: `aws/aws-sdk-php` (for S3 storage driver), `symfony/form` (for FileType form type), `symfony/validator` (for file validation constraints)
 - Main branch is `main`
 
 ## Testing Conventions

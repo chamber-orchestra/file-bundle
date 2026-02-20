@@ -31,9 +31,9 @@ use Doctrine\Persistence\Proxy;
 #[AsDoctrineListener(Events::postFlush)]
 class FileSubscriber extends AbstractDoctrineListener
 {
-    /** @var array<int, array{string, string, array<string, string>}> */
+    /** @var array<int, array{object, string, array<string, string>}> */
     private array $pendingRemove = [];
-    /** @var array<int, array{string, string, array<string, string>}> */
+    /** @var array<int, array{object, string, array<string, string>}> */
     private array $pendingArchive = [];
 
     /**
@@ -158,10 +158,10 @@ class FileSubscriber extends AbstractDoctrineListener
         $pendingArchive = $this->pendingArchive;
         $this->pendingArchive = [];
 
-        foreach ($pendingRemove as [$entityClass, $storageName, $fields]) {
+        foreach ($pendingRemove as [$entity, $storageName, $fields]) {
             foreach ($fields as $relativePath) {
                 try {
-                    $this->handler->remove($entityClass, $storageName, $relativePath);
+                    $this->handler->remove($entity, $storageName, $relativePath);
                 } catch (\Throwable) {
                     // Individual file removal failures must not abort remaining removals.
                     // The database transaction already succeeded at this point.
@@ -169,7 +169,7 @@ class FileSubscriber extends AbstractDoctrineListener
             }
         }
 
-        foreach ($pendingArchive as [$entityClass, $storageName, $fields]) {
+        foreach ($pendingArchive as [$entity, $storageName, $fields]) {
             foreach ($fields as $relativePath) {
                 try {
                     $this->handler->archive($storageName, $relativePath);
@@ -255,7 +255,7 @@ class FileSubscriber extends AbstractDoctrineListener
             $paths[$field] = $old;
         }
 
-        $entry = [ClassUtils::getClass($entity), $config->getStorage(), $paths];
+        $entry = [$entity, $config->getStorage(), $paths];
 
         match ($behaviour) {
             Behaviour::Remove => $this->pendingRemove[\spl_object_id($entity)] = $entry,
@@ -289,7 +289,7 @@ class FileSubscriber extends AbstractDoctrineListener
             $paths[$field] = $relativePath;
         }
 
-        $entry = [ClassUtils::getClass($entity), $config->getStorage(), $paths];
+        $entry = [$entity, $config->getStorage(), $paths];
 
         match ($behaviour) {
             Behaviour::Remove => $this->pendingRemove[\spl_object_id($entity)] = $entry,

@@ -26,6 +26,7 @@ return static function (ContainerConfigurator $container): void {
             '../../Entity',
             '../../Events',
             '../../Storage',
+            '../../Form',
         ]);
 
     $services->set(StorageResolver::class);

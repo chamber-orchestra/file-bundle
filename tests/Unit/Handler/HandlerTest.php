@@ -204,9 +204,9 @@ class HandlerTest extends TestCase
         $this->handler->upload($this->metadata, $entity, 'filePath');
 
         self::assertInstanceOf(PreUploadEvent::class, $dispatched[0]);
-        self::assertSame(\stdClass::class, $dispatched[0]->entityClass);
+        self::assertSame($entity, $dispatched[0]->entity);
         self::assertInstanceOf(PostUploadEvent::class, $dispatched[1]);
-        self::assertSame(\stdClass::class, $dispatched[1]->entityClass);
+        self::assertSame($entity, $dispatched[1]->entity);
 
         @\unlink($tmpFile);
     }
@@ -264,6 +264,8 @@ class HandlerTest extends TestCase
 
     public function testRemoveDispatchesEventsAndCallsStorage(): void
     {
+        $entity = new \stdClass();
+
         $this->storage->method('resolvePath')
             ->with('/test/file.txt')
             ->willReturn('/var/uploads/test/file.txt');
@@ -285,12 +287,12 @@ class HandlerTest extends TestCase
             ->method('remove')
             ->with('/var/uploads/test/file.txt');
 
-        $this->handler->remove(\stdClass::class, 'default', '/test/file.txt');
+        $this->handler->remove($entity, 'default', '/test/file.txt');
 
         self::assertInstanceOf(PreRemoveEvent::class, $dispatched[0]);
-        self::assertSame(\stdClass::class, $dispatched[0]->entityClass);
+        self::assertSame($entity, $dispatched[0]->entity);
         self::assertInstanceOf(PostRemoveEvent::class, $dispatched[1]);
-        self::assertSame(\stdClass::class, $dispatched[1]->entityClass);
+        self::assertSame($entity, $dispatched[1]->entity);
     }
 
     public function testRemoveReturnsEarlyForNullPath(): void
@@ -301,6 +303,6 @@ class HandlerTest extends TestCase
         $this->storage->expects(self::never())
             ->method('remove');
 
-        $this->handler->remove(\stdClass::class, 'default', null);
+        $this->handler->remove(new \stdClass(), 'default', null);
     }
 }

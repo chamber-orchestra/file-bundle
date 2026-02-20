@@ -1,8 +1,13 @@
 # ChamberOrchestra File Bundle
 
+[![PHP Composer](https://github.com/chamber-orchestra/file-bundle/actions/workflows/php.yml/badge.svg)](https://github.com/chamber-orchestra/file-bundle/actions/workflows/php.yml)
+[![PHPStan](https://img.shields.io/badge/PHPStan-max-brightgreen.svg)](https://phpstan.org/)
+[![PHP-CS-Fixer](https://img.shields.io/badge/code%20style-PER--CS%20%2F%20Symfony-blue.svg)](https://cs.symfony.com/)
 [![Latest Stable Version](https://img.shields.io/packagist/v/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
-[![License](https://img.shields.io/packagist/l/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
-[![PHP Version](https://img.shields.io/packagist/php-v/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
+[![Total Downloads](https://img.shields.io/packagist/dt/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PHP 8.5+](https://img.shields.io/badge/PHP-8.5%2B-777BB4.svg)](https://www.php.net/)
+[![Symfony 8.0](https://img.shields.io/badge/Symfony-8.0-000000.svg)](https://symfony.com/)
 
 A Symfony bundle for automatic file upload and image upload handling on Doctrine ORM entities. Mark your entity with PHP attributes, and the bundle transparently uploads, injects, and removes files through Doctrine lifecycle events.
 
@@ -19,6 +24,7 @@ Supports local filesystem and Amazon S3 storage backends, multiple named storage
 - **Image support** — dimensions, EXIF metadata, orientation detection
 - **Doctrine embeddables** — uploadable fields inside embedded objects
 - **Pluggable naming strategies** — hashing (default), original name, or custom
+- **Symfony Form integration** — compound FileType with delete checkbox and file preservation
 - **Symfony Serializer integration** — normalizes files to absolute URLs
 
 ## Requirements
@@ -445,7 +451,7 @@ if ($image->isImage()) {
 
 The bundle dispatches events around file upload and removal, allowing you to hook in for image processing, cache clearing, thumbnail cleanup, CDN invalidation, etc.
 
-All events carry `$entityClass` — the FQCN of the entity that triggered the event. This allows listeners to target specific entity types.
+All events carry `$entity` — the entity object that triggered the event. This allows listeners to filter by entity type.
 
 | Event | Dispatched |
 |---|---|
@@ -456,7 +462,7 @@ All events carry `$entityClass` — the FQCN of the entity that triggered the ev
 
 ### Upload Events
 
-Upload events carry `$entityClass`, `$entity`, `$file`, and `$fieldName`. Use `PostUploadEvent` for post-processing like image resizing:
+Upload events carry `$entity`, `$file`, and `$fieldName`. Use `PostUploadEvent` for post-processing like image resizing:
 
 ```php
 use ChamberOrchestra\FileBundle\Events\PostUploadEvent;
@@ -468,7 +474,7 @@ class ImageResizeListener
     public function __invoke(PostUploadEvent $event): void
     {
         // Only process images for specific entity types
-        if (Album::class !== $event->entityClass) {
+        if (!$event->entity instanceof Album) {
             return;
         }
 
@@ -481,7 +487,7 @@ class ImageResizeListener
 
 ### Removal Events
 
-Removal events carry `$entityClass`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`:
+Removal events carry `$entity`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`:
 
 ```php
 use ChamberOrchestra\FileBundle\Events\PreRemoveEvent;
@@ -497,6 +503,49 @@ class ThumbnailCleanupListener
     }
 }
 ```
+
+## Form Type
+
+The bundle provides a `FileType` form type for handling file uploads in Symfony forms. It is a compound form with a file input and an optional delete checkbox that preserves the original `Model\File` across submissions.
+
+```bash
+composer require symfony/form symfony/validator
+```
+
+### Basic Usage
+
+```php
+use ChamberOrchestra\FileBundle\Form\Type\FileType;
+
+$builder->add('score', FileType::class);
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `multiple` | `bool` | `false` | Allow multiple file uploads |
+| `mime_types` | `array` | `[]` | Allowed MIME types (sets `accept` attribute and validation) |
+| `required` | `bool` | `false` | Whether a file is required |
+| `allow_delete` | `bool` | `true` | Show a delete checkbox (only when `required` is `false`) |
+| `entry_options` | `array` | `[]` | Options passed to the inner Symfony `FileType` |
+| `delete_options` | `array` | `[]` | Options passed to the delete `CheckboxType` |
+
+### With MIME Type Restriction
+
+```php
+$builder->add('score', FileType::class, [
+    'mime_types' => ['application/pdf'],
+    'required' => true,
+]);
+```
+
+### Template Variables
+
+The form view exposes:
+- `original_file` — the original `Model\File` instance (for displaying the current file)
+- `allow_delete` — whether the delete checkbox is shown
+- `multiple` — whether multiple uploads are allowed
 
 ## Serializer Integration
 
