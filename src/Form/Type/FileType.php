@@ -47,13 +47,15 @@ class FileType extends AbstractType
                 /** @var array<string> $mimeTypes */
                 $mimeTypes = $options['mime_types'];
 
-                $constraints = [
-                    new \Symfony\Component\Validator\Constraints\File(
-                        mimeTypes: $mimeTypes,
-                    ),
-                ];
+                $constraints = [];
 
-                if ($options['multiple']) {
+                if ([] !== $mimeTypes) {
+                    $constraints[] = new \Symfony\Component\Validator\Constraints\File(
+                        mimeTypes: $mimeTypes,
+                    );
+                }
+
+                if ($options['multiple'] && [] !== $constraints) {
                     $constraints = [new All($constraints)];
                 }
 
@@ -88,6 +90,14 @@ class FileType extends AbstractType
                 ], $map));
             },
         ]);
+
+        $resolver->setNormalizer('allow_delete', static function (Options $options, mixed $value): bool {
+            if ($value && $options['required']) {
+                throw new \LogicException('The "allow_delete" option cannot be enabled when "required" is true.');
+            }
+
+            return (bool) $value;
+        });
     }
 
     public function buildView(FormView $view, FormInterface $form, array $options): void
@@ -115,6 +125,8 @@ class FileType extends AbstractType
             $entryOptions,
         );
 
+        $multiple = $options['multiple'];
+
         $builder->addEventListener(
             FormEvents::POST_SET_DATA,
             function (FormEvent $event): void {
@@ -123,17 +135,25 @@ class FileType extends AbstractType
                 $attr = $form->getConfig()->getAttribute(self::ATTR_HOLDER);
                 $this->originalFiles[$attr] = $form->getData();
             },
+            10,
         );
 
         $builder->addEventListener(
             FormEvents::PRE_SUBMIT,
-            function (FormEvent $event): void {
+            function (FormEvent $event) use ($multiple): void {
                 $form = $event->getForm();
                 /** @var array<string, mixed> $data */
                 $data = $event->getData();
                 /** @var string $attr */
                 $attr = $form->getConfig()->getAttribute(self::ATTR_HOLDER);
-                $data['file'] ??= $this->originalFiles[$attr];
+
+                if ($multiple) {
+                    if (!isset($data['file']) || (\is_array($data['file']) && [] === $data['file'])) {
+                        $data['file'] = $this->originalFiles[$attr];
+                    }
+                } else {
+                    $data['file'] ??= $this->originalFiles[$attr];
+                }
 
                 $event->setData($data);
             },
@@ -149,7 +169,7 @@ class FileType extends AbstractType
             },
         );
 
-        if ($options['allow_delete'] && !$options['required']) {
+        if ($options['allow_delete']) {
             $builder->addEventListener(
                 FormEvents::POST_SET_DATA,
                 static function (FormEvent $event) use ($options): void {
