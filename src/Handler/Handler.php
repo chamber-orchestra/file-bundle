@@ -22,7 +22,6 @@ use ChamberOrchestra\FileBundle\NamingStrategy\NamingStrategyFactory;
 use ChamberOrchestra\FileBundle\Storage\StorageInterface;
 use ChamberOrchestra\FileBundle\Storage\StorageResolver;
 use ChamberOrchestra\MetadataBundle\Mapping\ExtensionMetadataInterface;
-use Doctrine\Common\Util\ClassUtils;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 class Handler
@@ -89,9 +88,7 @@ class Handler
             throw new RuntimeException(\sprintf("The uploaded file is not an instance of '%s'.", \Symfony\Component\HttpFoundation\File\File::class));
         }
 
-        $entityClass = ClassUtils::getClass($object);
-
-        $this->dispatcher->dispatch(new PreUploadEvent($entityClass, $object, $file, $fieldName));
+        $this->dispatcher->dispatch(new PreUploadEvent($object, $file, $fieldName));
 
         $namingStrategy = NamingStrategyFactory::create($config->getNamingStrategy());
         $relativePath = $storage->upload($file, $namingStrategy, $config->getPrefix());
@@ -102,10 +99,10 @@ class Handler
         $file = new File($resolvedPath, $uri);
         $metadata->setFieldValue($object, $inversedBy, $file);
 
-        $this->dispatcher->dispatch(new PostUploadEvent($entityClass, $object, $file, $fieldName));
+        $this->dispatcher->dispatch(new PostUploadEvent($object, $file, $fieldName));
     }
 
-    public function remove(string $entityClass, string $storageName, ?string $relativePath): void
+    public function remove(object $entity, string $storageName, ?string $relativePath): void
     {
         if (null === $relativePath) {
             return;
@@ -116,9 +113,9 @@ class Handler
         $resolvedPath = $storage->resolvePath($relativePath);
         $resolvedUri = $storage->resolveUri($relativePath);
 
-        $this->dispatcher->dispatch(new PreRemoveEvent($entityClass, $relativePath, $resolvedPath, $resolvedUri));
+        $this->dispatcher->dispatch(new PreRemoveEvent($entity, $relativePath, $resolvedPath, $resolvedUri));
         $storage->remove($resolvedPath);
-        $this->dispatcher->dispatch(new PostRemoveEvent($entityClass, $relativePath, $resolvedPath, $resolvedUri));
+        $this->dispatcher->dispatch(new PostRemoveEvent($entity, $relativePath, $resolvedPath, $resolvedUri));
     }
 
     public function archive(string $storageName, ?string $relativePath): void

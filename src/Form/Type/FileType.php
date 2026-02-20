@@ -65,31 +65,33 @@ class FileType extends AbstractType
 
                 return $constraints;
             },
-            'delete_options' => static function (OptionsResolver $resolver): void {
-                $resolver->setDefaults([
-                    'required' => false,
-                    'error_bubbling' => false,
-                    'label' => 'file.field.delete',
-                ]);
-            },
-            'entry_options' => static function (OptionsResolver $resolver, Options $parent): void {
-                $keys = [
-                    'attr',
-                    'label',
-                    'translation_domain',
-                    'multiple',
-                ];
-                $map = [];
-                foreach ($keys as $key) {
-                    $map[$key] = $parent[$key];
-                }
-
-                $resolver->setDefaults(\array_merge([
-                    'error_bubbling' => false,
-                    'required' => false,
-                ], $map));
-            },
         ]);
+
+        $resolver->setOptions('delete_options', static function (OptionsResolver $resolver): void {
+            $resolver->setDefaults([
+                'required' => false,
+                'error_bubbling' => false,
+                'label' => 'Delete',
+            ]);
+        });
+
+        $resolver->setOptions('entry_options', static function (OptionsResolver $resolver, Options $parent): void {
+            $keys = [
+                'attr',
+                'label',
+                'translation_domain',
+                'multiple',
+            ];
+            $map = [];
+            foreach ($keys as $key) {
+                $map[$key] = $parent[$key];
+            }
+
+            $resolver->setDefaults(\array_merge([
+                'error_bubbling' => false,
+                'required' => false,
+            ], $map));
+        });
 
         $resolver->setNormalizer('allow_delete', static function (Options $options, mixed $value): bool {
             if ($value && $options['required']) {

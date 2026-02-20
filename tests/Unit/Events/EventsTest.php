@@ -24,9 +24,10 @@ class EventsTest extends TestCase
 {
     public function testPreRemoveEventProperties(): void
     {
-        $event = new PreRemoveEvent('App\\Entity\\Document', '/relative/path.txt', '/resolved/path.txt', '/uploads/path.txt');
+        $entity = new \stdClass();
+        $event = new PreRemoveEvent($entity, '/relative/path.txt', '/resolved/path.txt', '/uploads/path.txt');
 
-        self::assertSame('App\\Entity\\Document', $event->entityClass);
+        self::assertSame($entity, $event->entity);
         self::assertSame('/relative/path.txt', $event->relativePath);
         self::assertSame('/resolved/path.txt', $event->resolvedPath);
         self::assertSame('/uploads/path.txt', $event->resolvedUri);
@@ -34,9 +35,10 @@ class EventsTest extends TestCase
 
     public function testPostRemoveEventProperties(): void
     {
-        $event = new PostRemoveEvent('App\\Entity\\Document', '/relative/path.txt', '/resolved/path.txt', '/uploads/path.txt');
+        $entity = new \stdClass();
+        $event = new PostRemoveEvent($entity, '/relative/path.txt', '/resolved/path.txt', '/uploads/path.txt');
 
-        self::assertSame('App\\Entity\\Document', $event->entityClass);
+        self::assertSame($entity, $event->entity);
         self::assertSame('/relative/path.txt', $event->relativePath);
         self::assertSame('/resolved/path.txt', $event->resolvedPath);
         self::assertSame('/uploads/path.txt', $event->resolvedUri);
@@ -44,8 +46,9 @@ class EventsTest extends TestCase
 
     public function testEventsExtendSymfonyEvent(): void
     {
-        $pre = new PreRemoveEvent('App\\Entity\\Doc', '/a', '/b', '/c');
-        $post = new PostRemoveEvent('App\\Entity\\Doc', '/a', '/b', '/c');
+        $entity = new \stdClass();
+        $pre = new PreRemoveEvent($entity, '/a', '/b', '/c');
+        $post = new PostRemoveEvent($entity, '/a', '/b', '/c');
 
         self::assertInstanceOf(Event::class, $pre);
         self::assertInstanceOf(Event::class, $post);
@@ -58,9 +61,8 @@ class EventsTest extends TestCase
         $file = new UploadedFile($tmpFile, 'requiem.pdf', 'application/pdf', null, true);
         $entity = new \stdClass();
 
-        $event = new PreUploadEvent(\stdClass::class, $entity, $file, 'score');
+        $event = new PreUploadEvent($entity, $file, 'score');
 
-        self::assertSame(\stdClass::class, $event->entityClass);
         self::assertSame($entity, $event->entity);
         self::assertSame($file, $event->file);
         self::assertSame('score', $event->fieldName);
@@ -74,9 +76,8 @@ class EventsTest extends TestCase
         $file = new File('/uploads/scores/requiem.pdf', '/uploads/scores/requiem.pdf');
         $entity = new \stdClass();
 
-        $event = new PostUploadEvent(\stdClass::class, $entity, $file, 'score');
+        $event = new PostUploadEvent($entity, $file, 'score');
 
-        self::assertSame(\stdClass::class, $event->entityClass);
         self::assertSame($entity, $event->entity);
         self::assertSame($file, $event->file);
         self::assertSame('score', $event->fieldName);

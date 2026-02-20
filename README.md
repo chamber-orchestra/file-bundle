@@ -451,7 +451,7 @@ if ($image->isImage()) {
 
 The bundle dispatches events around file upload and removal, allowing you to hook in for image processing, cache clearing, thumbnail cleanup, CDN invalidation, etc.
 
-All events carry `$entityClass` — the FQCN of the entity that triggered the event. This allows listeners to target specific entity types.
+All events carry `$entity` — the entity object that triggered the event. This allows listeners to filter by entity type.
 
 | Event | Dispatched |
 |---|---|
@@ -462,7 +462,7 @@ All events carry `$entityClass` — the FQCN of the entity that triggered the ev
 
 ### Upload Events
 
-Upload events carry `$entityClass`, `$entity`, `$file`, and `$fieldName`. Use `PostUploadEvent` for post-processing like image resizing:
+Upload events carry `$entity`, `$file`, and `$fieldName`. Use `PostUploadEvent` for post-processing like image resizing:
 
 ```php
 use ChamberOrchestra\FileBundle\Events\PostUploadEvent;
@@ -474,7 +474,7 @@ class ImageResizeListener
     public function __invoke(PostUploadEvent $event): void
     {
         // Only process images for specific entity types
-        if (Album::class !== $event->entityClass) {
+        if (!$event->entity instanceof Album) {
             return;
         }
 
@@ -487,7 +487,7 @@ class ImageResizeListener
 
 ### Removal Events
 
-Removal events carry `$entityClass`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`:
+Removal events carry `$entity`, `$relativePath`, `$resolvedPath`, and `$resolvedUri`:
 
 ```php
 use ChamberOrchestra\FileBundle\Events\PreRemoveEvent;

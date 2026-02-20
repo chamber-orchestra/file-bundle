@@ -24,7 +24,6 @@ use Symfony\Contracts\EventDispatcher\Event;
 final class PostUploadEvent extends Event
 {
     public function __construct(
-        public readonly string $entityClass,
         public readonly object $entity,
         public readonly File $file,
         public readonly string $fieldName,

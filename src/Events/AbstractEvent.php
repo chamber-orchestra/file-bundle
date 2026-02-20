@@ -16,7 +16,7 @@ use Symfony\Contracts\EventDispatcher\Event;
 abstract class AbstractEvent extends Event
 {
     public function __construct(
-        public readonly string $entityClass,
+        public readonly object $entity,
         public readonly string $relativePath,
         public readonly string $resolvedPath,
         public readonly ?string $resolvedUri,
