@@ -51,9 +51,16 @@ class ImageTraitTest extends TestCase
         self::assertFalse($file->isImage());
     }
 
-    public function testIsImageReturnsFalseForNonExistentFile(): void
+    public function testIsImageReturnsTrueForNonExistentFileWithUri(): void
     {
         $file = new File('/nonexistent/path.png', '/uploads/path.png');
+
+        self::assertTrue($file->isImage());
+    }
+
+    public function testIsImageReturnsFalseForNonExistentFileWithoutUri(): void
+    {
+        $file = new File('/nonexistent/path.png');
 
         self::assertFalse($file->isImage());
     }

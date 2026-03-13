@@ -28,7 +28,14 @@ readonly class S3Storage implements StorageInterface
         ?string $uriPrefix = null,
     ) {
         $this->bucket = $bucket;
-        $this->uriPrefix = null !== $uriPrefix ? '/'.\trim($uriPrefix, '/') : null;
+
+        if (null === $uriPrefix) {
+            $this->uriPrefix = null;
+        } elseif (\str_contains($uriPrefix, '://')) {
+            $this->uriPrefix = \rtrim($uriPrefix, '/');
+        } else {
+            $this->uriPrefix = '/'.\trim($uriPrefix, '/');
+        }
     }
 
     public function upload(File $file, NamingStrategyInterface $namingStrategy, string $prefix = ''): string
@@ -90,7 +97,7 @@ readonly class S3Storage implements StorageInterface
             return $this->client->getObjectUrl($this->bucket, \ltrim($path, '/'));
         }
 
-        return $this->uriPrefix.$path;
+        return $this->uriPrefix.'/'.\ltrim($path, '/');
     }
 
     public function resolveRelativePath(string $path, string $prefix = ''): string
