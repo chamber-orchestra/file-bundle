@@ -15,13 +15,58 @@ class File extends \Symfony\Component\HttpFoundation\File\File implements FileIn
 {
     use ImageTrait;
 
-    public function __construct(string $path, public readonly ?string $uri = null)
-    {
+    public function __construct(
+        string $path,
+        public readonly ?string $uri = null,
+        private readonly ?string $relativePath = null,
+    ) {
         parent::__construct($path, false);
     }
 
     public function getUri(): ?string
     {
         return $this->uri;
+    }
+
+    public function getRelativePath(): ?string
+    {
+        return $this->relativePath;
+    }
+
+    #[\Override]
+    public function isFile(): bool
+    {
+        if (parent::isFile()) {
+            return true;
+        }
+
+        return null !== $this->uri;
+    }
+
+    #[\Override]
+    public function getMimeType(): ?string
+    {
+        if (parent::isFile()) {
+            return parent::getMimeType();
+        }
+
+        if (null !== $this->uri) {
+            $ext = \pathinfo($this->getPathname(), \PATHINFO_EXTENSION);
+
+            return match (\strtolower($ext)) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'png' => 'image/png',
+                'gif' => 'image/gif',
+                'webp' => 'image/webp',
+                'avif' => 'image/avif',
+                'svg' => 'image/svg+xml',
+                'pdf' => 'application/pdf',
+                'mp4' => 'video/mp4',
+                'mov' => 'video/quicktime',
+                default => null,
+            };
+        }
+
+        return null;
     }
 }

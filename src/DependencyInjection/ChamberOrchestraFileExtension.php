@@ -103,7 +103,7 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
     }
 
     /**
-     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null} $storage
+     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null, path_style?: bool, credentials?: array{key: string, secret: string}} $storage
      */
     private function registerS3Storage(ContainerBuilder $container, string $serviceId, string $name, array $storage): void
     {
@@ -121,6 +121,17 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
 
         if (null !== ($storage['endpoint'] ?? null)) {
             $clientArgs['endpoint'] = $storage['endpoint'];
+        }
+
+        if ($storage['path_style'] ?? false) {
+            $clientArgs['use_path_style_endpoint'] = true;
+        }
+
+        if (isset($storage['credentials'])) {
+            $clientArgs['credentials'] = [
+                'key' => $storage['credentials']['key'],
+                'secret' => $storage['credentials']['secret'],
+            ];
         }
 
         $clientDefinition = new Definition(S3Client::class, [$clientArgs]);
