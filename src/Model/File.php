@@ -18,7 +18,6 @@ class File extends \Symfony\Component\HttpFoundation\File\File implements FileIn
     public function __construct(
         string $path,
         public readonly ?string $uri = null,
-        private readonly ?string $relativePath = null,
     ) {
         parent::__construct($path, false);
     }
@@ -26,11 +25,6 @@ class File extends \Symfony\Component\HttpFoundation\File\File implements FileIn
     public function getUri(): ?string
     {
         return $this->uri;
-    }
-
-    public function getRelativePath(): ?string
-    {
-        return $this->relativePath;
     }
 
     #[\Override]
