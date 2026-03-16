@@ -96,7 +96,7 @@ class Handler
         $resolvedPath = $storage->resolvePath($relativePath);
         $uri = $storage->resolveUri($relativePath);
 
-        $file = new File($resolvedPath, $uri, $relativePath);
+        $file = new File($resolvedPath, $uri);
         $metadata->setFieldValue($object, $inversedBy, $file);
 
         $this->dispatcher->dispatch(new PostUploadEvent($object, $file, $fieldName));
@@ -163,7 +163,7 @@ class Handler
         $path = $storage->resolvePath($relativePath);
         $uri = $storage->resolveUri($relativePath);
 
-        $file = new File($path, $uri, $relativePath);
+        $file = new File($path, $uri);
         $metadata->setFieldValue($object, $fieldName, $file);
     }
 

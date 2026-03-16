@@ -14,6 +14,4 @@ namespace ChamberOrchestra\FileBundle\Model;
 interface FileInterface
 {
     public function getUri(): ?string;
-
-    public function getRelativePath(): ?string;
 }

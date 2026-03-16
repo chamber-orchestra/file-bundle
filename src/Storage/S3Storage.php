@@ -111,9 +111,22 @@ readonly class S3Storage implements StorageInterface
         return $prefix.'/'.\ltrim(\basename($path), '/');
     }
 
+    /**
+     * Strip the configured URI prefix from a path (e.g. full S3 URL → S3 key).
+     * Used by image-bundle's S3Loader which receives the full URI from Twig.
+     */
+    private function stripUriPrefix(string $path): string
+    {
+        if (null !== $this->uriPrefix && \str_starts_with($path, $this->uriPrefix)) {
+            return \substr($path, \strlen($this->uriPrefix));
+        }
+
+        return $path;
+    }
+
     public function download(string $relativePath, string $targetPath): void
     {
-        $key = \ltrim($relativePath, '/');
+        $key = \ltrim($this->stripUriPrefix($relativePath), '/');
 
         try {
             $this->client->getObject([
