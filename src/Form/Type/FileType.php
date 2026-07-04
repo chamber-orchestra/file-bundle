@@ -41,7 +41,7 @@ class FileType extends AbstractType
             'mime_types' => [],
             'allow_delete' => true,
             'attr' => static fn (Options $options): array => [
-                'accept' => \implode(',', (array) $options['mime_types']),
+                'accept' => \implode(',', \array_filter((array) $options['mime_types'], \is_string(...))),
             ],
             'constraints' => static function (Options $options): array {
                 /** @var array<string> $mimeTypes */
