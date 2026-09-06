@@ -44,7 +44,7 @@
     "symfony/test-pack": "^1.2",
     "symfony/mime": "^8.1",
     "symfony/serializer": "^8.1",
-    "aws/aws-sdk-php": "^3.0",
+    "aws/aws-sdk-php": "^3.394",
     "symfony/form": "^8.1",
     "symfony/validator": "^8.1",
     "friendsofphp/php-cs-fixer": "^3.95",
