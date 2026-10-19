@@ -30,7 +30,7 @@ Supports local filesystem and Amazon S3 storage backends, multiple named storage
 ## Requirements
 
 - PHP 8.5+
-- Symfony 8.0
+- Symfony 8.1
 - Doctrine ORM
 
 ## Installation
@@ -185,6 +185,12 @@ chamber_orchestra_file:
 - If a block is set, every key of that block is required. A missing, unknown or invalid key (a value <= 0, a
   non-number, a mode outside the list, a non-integer or < 1 `max_attempts`) fails configuration processing with an
   `InvalidConfigurationException` that names the key path, e.g. `chamber_orchestra_file.storages.default.http`.
+- Write the values as literals. An environment placeholder (`%env(float:…)%`, `%env(int:…)%`) fails this validation:
+  Symfony validates a placeholder with a dummy value (0 for `float` and `int`), which is not > 0 (or >= 1 for
+  `max_attempts`).
+- A timeout of `.inf` or below `0.001` passes the configuration check, but Guzzle (8.2) then rejects every request
+  with `GuzzleHttp\Exception\InvalidArgumentException`; it does not mean "no timeout". To have no timeout, leave
+  `http` unset.
 - A block that is not set is not passed to the client: without both blocks the `S3Client` arguments are exactly those
   of 8.1.4, and the SDK defaults apply.
 - The `file_system` driver accepts and ignores both blocks, so an environment can override an `s3` storage with
@@ -192,7 +198,8 @@ chamber_orchestra_file:
 - The timeouts are enforced by Guzzle's curl handler (`ext-curl`). They do not bound:
   - credential resolution when `credentials` is not set: the SDK then walks its provider chain (env, ini, ECS, IMDS)
     outside these timeouts and retries, so a bounded operation time needs static `credentials`;
-  - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option);
+  - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option); with `http` set,
+    both of these fail instead (see the `CURLOPT_FORBID_REUSE` item below);
   - DNS resolution, unless libcurl uses an asynchronous resolver.
 - With `http` set, the client does not follow redirects (`allow_redirects: false`), and a step in the `init` step of
   the client's handler list turns a 3xx answer into an error that is not retried (one HTTP request):
