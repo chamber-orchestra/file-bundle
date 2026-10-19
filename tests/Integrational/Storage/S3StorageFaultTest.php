@@ -29,7 +29,6 @@ use Tests\Support\FakeS3\FakeS3Harness;
 final class S3StorageFaultTest extends TestCase
 {
     private const int ATTEMPTS = 2;
-    /** A·T_test + D(A) + 1 s, with D(A) = 6 s the largest SDK retry delay (spec §3, AC-5). */
     // A·T_test + D_test + 1 s = 4 s: in `standard` mode the SDK's single retry delay at A = 2 is at most 2 s (RetryMiddlewareV2::exponentialDelayWithJitter).
     private const float UPPER_BOUND = self::ATTEMPTS * FakeS3Harness::T_TEST + 2.0 + 1.0;
     /** At least 1 000 000 B, so Guzzle streams the body (plan G-6); below 1 048 576 B, so no `Expect: 100-Continue` (G-10). */

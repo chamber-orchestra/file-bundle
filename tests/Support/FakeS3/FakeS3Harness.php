@@ -173,12 +173,13 @@ final class FakeS3Harness
         $started = null;
         while (($status = \proc_get_status($process))['running']) {
             $now = \microtime(true);
-            if (null === $started && \str_starts_with((string) \file_get_contents($output), "ready\n")) {
+            // Anywhere in stdout: PHP may print a start-up warning before the "ready" line.
+            if (null === $started && 1 === \preg_match('/^ready$/m', (string) \file_get_contents($output))) {
                 $started = $now;
             }
             if (null === $started && $now - $spawned >= self::GUARD) {
                 \proc_terminate($process, 9);
-                Assert::fail(\sprintf('"%s" did not start within %.1f s: %s', $operation, self::GUARD, \file_get_contents($this->workdir.'/operation.err')));
+                Assert::fail(\sprintf('"%s" did not start within %.1f s: %s%s', $operation, self::GUARD, \file_get_contents($output), \file_get_contents($this->workdir.'/operation.err')));
             }
             if (null !== $started && $now - $started >= self::GUARD) {
                 \proc_terminate($process, 9);
