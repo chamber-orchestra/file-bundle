@@ -155,6 +155,10 @@ chamber_orchestra_file:
             endpoint: 'http://localhost:9000' # optional, for MinIO/localstack
 ```
 
+`download()` writes the object body straight to the target path. If it fails (a timeout or a dropped connection
+mid-body, for example), the target file may hold a partial body. The bundle does not delete it, also not in the
+archive path (`Behaviour::Archive`): the caller deletes it.
+
 #### S3 timeouts and retries
 
 Two optional blocks set the HTTP timeouts and the retry policy of the storage's `S3Client`:

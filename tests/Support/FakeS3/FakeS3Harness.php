@@ -24,6 +24,8 @@ final class FakeS3Harness
     public const float T_TEST = 0.5;
     public const float C_TEST = 0.25;
     public const float GUARD = 10 * self::T_TEST;
+    /** The body of a successful GET; shorter than the server's error bodies, so a target left untruncated shows. */
+    public const string OBJECT_BODY = 'Clair de lune';
 
     private readonly string $workdir;
     /** @var list<resource> */
@@ -43,7 +45,7 @@ final class FakeS3Harness
     public function startServer(string $scenario): string
     {
         $process = \proc_open(
-            [\PHP_BINARY, __DIR__.'/server.php', $scenario, $this->workdir.'/journal.jsonl', (string) self::T_TEST],
+            [\PHP_BINARY, __DIR__.'/server.php', $scenario, $this->workdir.'/journal.jsonl', (string) self::T_TEST, self::OBJECT_BODY],
             [1 => ['pipe', 'w'], 2 => ['file', $this->workdir.'/server.err', 'w']],
             $pipes,
         );
@@ -66,19 +68,29 @@ final class FakeS3Harness
     }
 
     /**
-     * HTTP methods of the requests the server received, in order (one journal line per request).
+     * HTTP methods of the requests the server received, in order.
      *
      * @return list<string>
      */
     public function requestMethods(): array
     {
+        return \array_column($this->requests(), 'method');
+    }
+
+    /**
+     * The requests the server received, in order (one journal line per complete request).
+     *
+     * @return list<array{request: int, connection: int, method: string, path: string, length: int, sha256: string, time: float}>
+     */
+    public function requests(): array
+    {
         $lines = @\file($this->workdir.'/journal.jsonl', \FILE_IGNORE_NEW_LINES | \FILE_SKIP_EMPTY_LINES) ?: [];
 
-        return \array_map(static function (string $line): string {
-            /** @var array{method: string} $request */
+        return \array_map(static function (string $line): array {
+            /** @var array{request: int, connection: int, method: string, path: string, length: int, sha256: string, time: float} $request */
             $request = \json_decode($line, true, 512, \JSON_THROW_ON_ERROR);
 
-            return $request['method'];
+            return $request;
         }, $lines);
     }
 
@@ -137,15 +149,15 @@ final class FakeS3Harness
     }
 
     /**
-     * Runs one S3Storage operation ("upload" or "download") in a child process.
+     * Runs one S3Storage operation ("upload" of a random file of $uploadSize bytes, or "download") in a child process.
      *
      * @param array<string, mixed> $storage the `storages.<name>` config
      *
-     * @return array{elapsed: float, attempts: int, chain: list<string>, message: string|null, awsErrorCode: string|null, connectionError: bool|null, targetSize: int|null, targetSha256: string|null}
+     * @return array{elapsed: float, attempts: int, chain: list<string>, message: string|null, awsErrorCode: string|null, connectionError: bool|null, sourceSha256: string|null, targetSize: int|null, targetSha256: string|null}
      */
-    public function runOperation(array $storage, string $operation): array
+    public function runOperation(array $storage, string $operation, int $uploadSize = 1024): array
     {
-        $spec = \json_encode(['storage' => $storage, 'operation' => $operation, 'workdir' => $this->workdir], \JSON_THROW_ON_ERROR);
+        $spec = \json_encode(['storage' => $storage, 'operation' => $operation, 'workdir' => $this->workdir, 'uploadSize' => $uploadSize], \JSON_THROW_ON_ERROR);
         $output = $this->workdir.'/operation.out';
         $process = \proc_open(
             [\PHP_BINARY, __DIR__.'/operation.php', $spec],

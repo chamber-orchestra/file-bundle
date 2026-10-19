@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\File\File;
 
 require \dirname(__DIR__, 3).'/vendor/autoload.php';
 
-/** @var array{storage: array<string, mixed>, operation: string, workdir: string} $spec */
+/** @var array{storage: array<string, mixed>, operation: string, workdir: string, uploadSize: int} $spec */
 $spec = \json_decode($argv[1], true, 512, \JSON_THROW_ON_ERROR);
 
 $container = new ContainerBuilder();
@@ -49,14 +49,16 @@ $client->getHandlerList()->appendAttempt(
     'fake_s3.attempt_counter',
 );
 
+$source = $spec['workdir'].'/violin_concerto.mp3';
 $target = $spec['workdir'].'/moonlight_sonata.mp3';
+if ('upload' === $spec['operation']) {
+    \file_put_contents($source, \random_bytes($spec['uploadSize']));
+}
 $exception = null;
 echo "ready\n"; // FakeS3Harness starts its 10·T_test guard here
 $started = \hrtime(true);
 try {
     if ('upload' === $spec['operation']) {
-        $source = $spec['workdir'].'/violin_concerto.mp3';
-        \file_put_contents($source, \str_repeat('a', 1024));
         $storage->upload(new File($source), new OriginNamingStrategy(), 'recordings');
     } else {
         $storage->download('recordings/violin_concerto.mp3', $target);
@@ -80,6 +82,7 @@ echo \json_encode([
     'message' => $exception?->getMessage(),
     'awsErrorCode' => $awsException?->getAwsErrorCode(),
     'connectionError' => $awsException?->isConnectionError(),
+    'sourceSha256' => \is_file($source) ? \hash_file('sha256', $source) : null,
     'targetSize' => \is_file($target) ? \filesize($target) : null,
     'targetSha256' => \is_file($target) ? \hash_file('sha256', $target) : null,
 ], \JSON_THROW_ON_ERROR), "\n";

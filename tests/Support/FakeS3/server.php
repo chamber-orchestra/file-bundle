@@ -9,17 +9,31 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-// Fake S3 server, child process of FakeS3Harness::startServer(): php server.php <scenario> <journal> <t_test>.
+// Fake S3 server, child process of FakeS3Harness::startServer():
+// php server.php <scenario> <journal> <t_test> <object body>.
 // Prints its port, then journals every HTTP request as one JSON line (request and connection number,
 // method, path, body length and sha256, time). Every response carries `Connection: close`. Guard (spec §9):
 // each connection is closed 10·T_test after accept, and after the first such close the server stops
 // accepting. Scenarios:
-//   silent — read the request, never answer;
-//   drip   — answer 200 with a large Content-Length, then send 1 byte every T_test/4.
+//   silent              — read the request, never answer;
+//   drip                — answer 200 with a large Content-Length, then send 1 byte every T_test/4;
+//   unavailable_then_ok — answer the first request 503 ServiceUnavailable, every later one 200 (a GET gets
+//                         the object body);
+//   no_such_key         — answer 404 NoSuchKey.
 
-[, $scenario, $journal, $tTest] = $argv;
+[, $scenario, $journal, $tTest, $objectBody] = $argv;
 $tTest = (float) $tTest;
 $guard = 10 * $tTest;
+
+function response(string $status, string $body, string $contentType = 'application/xml'): string
+{
+    return "HTTP/1.1 {$status}\r\nContent-Type: {$contentType}\r\nContent-Length: ".\strlen($body)."\r\nConnection: close\r\n\r\n".$body;
+}
+
+function error_response(string $status, string $code, string $message): string
+{
+    return \response($status, '<?xml version="1.0" encoding="UTF-8"?>'."\n<Error><Code>{$code}</Code><Message>{$message}</Message><RequestId>fake-s3</RequestId></Error>");
+}
 
 /**
  * Removes one complete request (head and Content-Length body) from the buffer.
@@ -97,6 +111,15 @@ while (\microtime(true) < $stopAt && (null !== $server || [] !== $connections)) 
             if ('drip' === $scenario) {
                 @\fwrite($connection['socket'], "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n");
                 $connection['drip'] = $now;
+            }
+            $answer = match (true) {
+                'unavailable_then_ok' === $scenario && 1 === $requestCount => \error_response('503 Service Unavailable', 'ServiceUnavailable', 'Please reduce your request rate.'),
+                'unavailable_then_ok' === $scenario => \response('200 OK', 'GET' === $request['method'] ? $objectBody : '', 'application/octet-stream'),
+                'no_such_key' === $scenario => \error_response('404 Not Found', 'NoSuchKey', 'The specified key does not exist.'),
+                default => null,
+            };
+            if (null !== $answer) {
+                @\fwrite($connection['socket'], $answer);
             }
         }
 
