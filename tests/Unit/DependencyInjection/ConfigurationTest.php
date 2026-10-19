@@ -160,6 +160,7 @@ class ConfigurationTest extends TestCase
         yield 'integer literals (D-13), standard' => [self::HTTP, ['connect_timeout' => 5.0, 'timeout' => 10.0], self::RETRIES];
         yield 'float literals, legacy' => [['connect_timeout' => 0.25, 'timeout' => 0.5], ['connect_timeout' => 0.25, 'timeout' => 0.5], ['mode' => 'legacy', 'max_attempts' => 1]];
         yield 'adaptive' => [['connect_timeout' => 1.5, 'timeout' => 30], ['connect_timeout' => 1.5, 'timeout' => 30.0], ['mode' => 'adaptive', 'max_attempts' => 3]];
+        yield 'lower bound 0.001 (D-28)' => [['connect_timeout' => 0.001, 'timeout' => 0.001], ['connect_timeout' => 0.001, 'timeout' => 0.001], self::RETRIES];
     }
 
     /**
@@ -225,7 +226,7 @@ class ConfigurationTest extends TestCase
     public static function invalidHttpValues(): iterable
     {
         foreach (['connect_timeout', 'timeout'] as $key) {
-            foreach (['zero' => 0, 'negative' => -1, 'non-numeric string' => 'abc', 'boolean' => true] as $label => $value) {
+            foreach (['zero' => 0, 'negative' => -1, 'infinite (D-28)' => \INF, 'below 0.001 (D-28)' => 0.0005, 'non-numeric string' => 'abc', 'boolean' => true] as $label => $value) {
                 yield $key.': '.$label => [$key, $value];
             }
         }
@@ -285,6 +286,7 @@ class ConfigurationTest extends TestCase
     public static function rejectedKeyPaths(): iterable
     {
         yield 'http' => [['http' => ['timeout' => -1] + self::HTTP], 'chamber_orchestra_file.storages.scores.http.timeout'];
+        yield 'http, infinite' => [['http' => ['connect_timeout' => \INF] + self::HTTP], 'chamber_orchestra_file.storages.scores.http.connect_timeout'];
         yield 'retries' => [['retries' => ['max_attempts' => 0] + self::RETRIES], 'chamber_orchestra_file.storages.scores.retries.max_attempts'];
     }
 

@@ -175,22 +175,22 @@ chamber_orchestra_file:
                 key: '%env(S3_KEY)%'
                 secret: '%env(S3_SECRET)%'
             http:
-                connect_timeout: 5   # seconds, > 0: the connection phase only
-                timeout: 10          # seconds, > 0: the whole transfer, connection included
+                connect_timeout: 5   # seconds, finite, >= 0.001: the connection phase only
+                timeout: 10          # seconds, finite, >= 0.001: the whole transfer, connection included
             retries:
                 mode: standard       # legacy, standard or adaptive
                 max_attempts: 2      # >= 1, the first attempt included
 ```
 
-- If a block is set, every key of that block is required. A missing, unknown or invalid key (a value <= 0, a
-  non-number, a mode outside the list, a non-integer or < 1 `max_attempts`) fails configuration processing with an
-  `InvalidConfigurationException` that names the key path, e.g. `chamber_orchestra_file.storages.default.http`.
+- If a block is set, every key of that block is required. A missing, unknown or invalid key (a timeout that is
+  infinite (`.inf`) or below `0.001`, a non-number, a mode outside the list, a non-integer or < 1 `max_attempts`)
+  fails configuration processing with an `InvalidConfigurationException` that names the key path, e.g.
+  `chamber_orchestra_file.storages.default.http`.
+- The timeouts must be finite and at least `0.001` because Guzzle cannot use other values: Guzzle 7 silently disables
+  such a timeout, and Guzzle 8 rejects every request. To have no timeout, leave `http` unset.
 - Write the values as literals. An environment placeholder (`%env(float:…)%`, `%env(int:…)%`) fails this validation:
-  Symfony validates a placeholder with a dummy value (0 for `float` and `int`), which is not > 0 (or >= 1 for
-  `max_attempts`).
-- A timeout of `.inf` or below `0.001` passes the configuration check, but Guzzle (8.2) then rejects every request
-  with `GuzzleHttp\Exception\InvalidArgumentException`; it does not mean "no timeout". To have no timeout, leave
-  `http` unset.
+  Symfony validates a placeholder with a dummy value (0 for `float` and `int`), which is below `0.001` (or below 1
+  for `max_attempts`).
 - A block that is not set is not passed to the client: without both blocks the `S3Client` arguments are exactly those
   of 8.1.4, and the SDK defaults apply.
 - The `file_system` driver accepts and ignores both blocks, so an environment can override an `s3` storage with
@@ -199,7 +199,8 @@ chamber_orchestra_file:
   - credential resolution when `credentials` is not set: the SDK then walks its provider chain (env, ini, ECS, IMDS)
     outside these timeouts and retries, so a bounded operation time needs static `credentials`;
   - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option); with `http` set,
-    both of these fail instead (see the `CURLOPT_FORBID_REUSE` item below);
+    a missing `ext-curl` fails the container compilation, and on Guzzle 8+ the `stream` request option fails the
+    request (see the `CURLOPT_FORBID_REUSE` item below);
   - DNS resolution, unless libcurl uses an asynchronous resolver.
 - With `http` set, the client does not follow redirects (`allow_redirects: false`), and a step in the `init` step of
   the client's handler list turns a 3xx answer into an error that is not retried (one HTTP request):
@@ -219,8 +220,8 @@ chamber_orchestra_file:
   in 8.1.4.
   - A storage with `http` requires `ext-curl`: without it, compiling the container fails with the `Error`
     `Undefined constant "CURLOPT_FORBID_REUSE"`.
-  - Requests to the client of such a storage with the `stream` request option fail: Guzzle's `StreamHandler` rejects
-    a request with the `curl` option (`InvalidArgumentException`).
+  - On Guzzle 8+, requests to the client of such a storage with the `stream` request option fail: Guzzle's
+    `StreamHandler` rejects a request with the `curl` option (`InvalidArgumentException`).
 
 ### Multiple Storages
 
@@ -309,8 +310,8 @@ chamber_orchestra_file:
 | `storages.*.path_style` | `bool` | `false` | Path-style addressing (LocalStack and some S3-compatible services) |
 | `storages.*.credentials.key` | `string` | — | S3 access key; required when `credentials` is set. Without `credentials` the SDK provider chain is used |
 | `storages.*.credentials.secret` | `string` | — | S3 secret key; required when `credentials` is set |
-| `storages.*.http.connect_timeout` | `float` | — | Connection phase timeout, seconds, > 0; required when `http` is set (s3 driver only) |
-| `storages.*.http.timeout` | `float` | — | Whole transfer timeout including the connection, seconds, > 0; required when `http` is set (s3 driver only) |
+| `storages.*.http.connect_timeout` | `float` | — | Connection phase timeout, seconds, finite, >= 0.001; required when `http` is set (s3 driver only) |
+| `storages.*.http.timeout` | `float` | — | Whole transfer timeout including the connection, seconds, finite, >= 0.001; required when `http` is set (s3 driver only) |
 | `storages.*.retries.mode` | `string` | — | SDK retry mode: `legacy`, `standard` or `adaptive`; required when `retries` is set (s3 driver only) |
 | `storages.*.retries.max_attempts` | `int` | — | Total attempts, the first one included, >= 1; required when `retries` is set (s3 driver only) |
 | `archive_path` | `string` | `%kernel.project_dir%/var/archive` | Local directory for archived files (`Behaviour::Archive`) |

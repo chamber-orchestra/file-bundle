@@ -123,8 +123,10 @@ final class Configuration implements ConfigurationInterface
                 ->then(static fn (int $v): float => (float) $v)
             ->end()
             ->validate()
-                ->ifTrue(static fn (float $v): bool => !($v > 0))
-                ->thenInvalid('The value must be greater than 0, got %s.')
+                // D-28: below 1 ms or infinite, Guzzle 7 silently drops the timeout and Guzzle 8 fails every request.
+                ->ifTrue(static fn (float $v): bool => !(\is_finite($v) && $v >= 0.001))
+                // not thenInvalid(): it formats with json_encode(), which cannot encode INF
+                ->then(static fn (float $v): never => throw new \InvalidArgumentException(\sprintf('The value must be a finite number of seconds >= 0.001, got %s.', \var_export($v, true))))
             ->end()
         ;
 

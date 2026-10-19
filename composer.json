@@ -52,8 +52,9 @@
   },
   "suggest": {
     "aws/aws-sdk-php": "Required for S3 storage driver (^3.0)",
-    "symfony/form": "Required for the FileType form type (^8.0)",
-    "symfony/validator": "Required for file validation constraints in the FileType form type (^8.0)"
+    "symfony/form": "Required for the FileType form type (8.1.*)",
+    "symfony/validator": "Required for file validation constraints in the FileType form type (8.1.*)",
+    "ext-curl": "Required for an S3 storage with the http block"
   },
   "autoload": {
     "psr-4": {
