@@ -103,7 +103,7 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
     }
 
     /**
-     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null, path_style?: bool, credentials?: array{key: string, secret: string}} $storage
+     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null, path_style?: bool, credentials?: array{key: string, secret: string}, http?: array{connect_timeout: float, timeout: float}, retries?: array{mode: string, max_attempts: int}} $storage
      */
     private function registerS3Storage(ContainerBuilder $container, string $serviceId, string $name, array $storage): void
     {
@@ -131,6 +131,21 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
             $clientArgs['credentials'] = [
                 'key' => $storage['credentials']['key'],
                 'secret' => $storage['credentials']['secret'],
+            ];
+        }
+
+        // Absent blocks are not passed, so the client stays identical to 8.1.4 (R-B3).
+        if (isset($storage['http'])) {
+            $clientArgs['http'] = [
+                'connect_timeout' => $storage['http']['connect_timeout'],
+                'timeout' => $storage['http']['timeout'],
+            ];
+        }
+
+        if (isset($storage['retries'])) {
+            $clientArgs['retries'] = [
+                'mode' => $storage['retries']['mode'],
+                'max_attempts' => $storage['retries']['max_attempts'],
             ];
         }
 

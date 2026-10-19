@@ -155,6 +155,41 @@ chamber_orchestra_file:
             endpoint: 'http://localhost:9000' # optional, for MinIO/localstack
 ```
 
+#### S3 timeouts and retries
+
+Two optional blocks set the HTTP timeouts and the retry policy of the storage's `S3Client`:
+
+```yaml
+chamber_orchestra_file:
+    storages:
+        default:
+            driver: s3
+            bucket: my-recordings-bucket
+            region: eu-west-2
+            credentials:
+                key: '%env(S3_KEY)%'
+                secret: '%env(S3_SECRET)%'
+            http:
+                connect_timeout: 5   # seconds, > 0: the connection phase only
+                timeout: 10          # seconds, > 0: the whole transfer, connection included
+            retries:
+                mode: standard       # legacy, standard or adaptive
+                max_attempts: 2      # >= 1, the first attempt included
+```
+
+- If a block is set, every key of that block is required. A missing, unknown or invalid key (a value <= 0, a
+  non-number, a mode outside the list, a non-integer or < 1 `max_attempts`) fails configuration processing with an
+  `InvalidConfigurationException` that names the key path, e.g. `chamber_orchestra_file.storages.default.http`.
+- A block that is not set is not passed to the client: without both blocks the `S3Client` arguments are exactly those
+  of 8.1.4, and the SDK defaults apply.
+- The `file_system` driver accepts and ignores both blocks, so an environment can override an `s3` storage with
+  `driver: file_system` without removing them.
+- The timeouts are enforced by Guzzle's curl handler (`ext-curl`). They do not bound:
+  - credential resolution when `credentials` is not set: the SDK then walks its provider chain (env, ini, ECS, IMDS)
+    outside these timeouts and retries, so a bounded operation time needs static `credentials`;
+  - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option);
+  - DNS resolution, unless libcurl uses an asynchronous resolver.
+
 ### Multiple Storages
 
 Define as many storages as you need. Each entity can select which storage to use via the `#[Uploadable]` attribute:
@@ -239,6 +274,13 @@ chamber_orchestra_file:
 | `storages.*.bucket` | `string\|null` | `null` | S3 bucket name (required for s3 driver) |
 | `storages.*.region` | `string\|null` | `null` | AWS region (required for s3 driver) |
 | `storages.*.endpoint` | `string\|null` | `null` | Custom S3 endpoint for MinIO/localstack |
+| `storages.*.path_style` | `bool` | `false` | Path-style addressing (LocalStack and some S3-compatible services) |
+| `storages.*.credentials.key` | `string` | — | S3 access key; required when `credentials` is set. Without `credentials` the SDK provider chain is used |
+| `storages.*.credentials.secret` | `string` | — | S3 secret key; required when `credentials` is set |
+| `storages.*.http.connect_timeout` | `float` | — | Connection phase timeout, seconds, > 0; required when `http` is set (s3 driver only) |
+| `storages.*.http.timeout` | `float` | — | Whole transfer timeout including the connection, seconds, > 0; required when `http` is set (s3 driver only) |
+| `storages.*.retries.mode` | `string` | — | SDK retry mode: `legacy`, `standard` or `adaptive`; required when `retries` is set (s3 driver only) |
+| `storages.*.retries.max_attempts` | `int` | — | Total attempts, the first one included, >= 1; required when `retries` is set (s3 driver only) |
 | `archive_path` | `string` | `%kernel.project_dir%/var/archive` | Local directory for archived files (`Behaviour::Archive`) |
 
 ## Entity Attributes
