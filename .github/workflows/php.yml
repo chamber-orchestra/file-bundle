@@ -13,16 +13,26 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The S3 connect-timeout test needs libcurl >= 8.11 (Debian trixie: 8.14); the runner's Ubuntu 24.04 has 8.5.
+    container: php:8.5-cli-trixie
+    env:
+      COMPOSER_CACHE_DIR: /tmp/composer-cache
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Install system tools and Composer
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git unzip libpng-dev libjpeg62-turbo-dev
+          docker-php-ext-configure gd --with-jpeg
+          docker-php-ext-install -j"$(nproc)" gd
+          curl -fsSL https://getcomposer.org/download/latest-2.x/composer.phar -o /usr/local/bin/composer
+          chmod +x /usr/local/bin/composer
+          echo 'memory_limit=-1' > /usr/local/etc/php/conf.d/ci.ini
 
-      - name: Setup PHP 8.5
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.5"
-          tools: composer:v2
-          coverage: none
+      - name: Show PHP and libcurl versions
+        run: php -r 'echo PHP_VERSION, " libcurl ", curl_version()["version"], PHP_EOL;'
+
+      - uses: actions/checkout@v7
 
       - name: Validate composer.json and composer.lock
         run: composer validate --strict
@@ -32,10 +42,10 @@ jobs:
         with:
           path: |
             vendor
-            ~/.composer/cache/files
-          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('**/composer.lock') }}
+            /tmp/composer-cache/files
+          key: ${{ runner.os }}-php-8.5-trixie-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-php-8.5-composer-
+            ${{ runner.os }}-php-8.5-trixie-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction

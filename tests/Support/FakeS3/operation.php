@@ -51,6 +51,7 @@ $client->getHandlerList()->appendAttempt(
 
 $target = $spec['workdir'].'/moonlight_sonata.mp3';
 $exception = null;
+echo "ready\n"; // FakeS3Harness starts its 10·T_test guard here
 $started = \hrtime(true);
 try {
     if ('upload' === $spec['operation']) {

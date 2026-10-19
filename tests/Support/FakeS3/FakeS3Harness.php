@@ -87,6 +87,15 @@ final class FakeS3Harness
      */
     public function connectTimeoutEndpoint(): string
     {
+        // Guzzle classifies errno 28 as ConnectTimeoutException only by libcurl's message (CurlFactory::CURL_CONNECT_TIMEOUT_ERRORS).
+        $libcurl = \curl_version();
+        if (false === $libcurl || $libcurl['version_number'] < 0x080B00) {
+            Assert::fail(\sprintf(
+                'This environment cannot run the connect-timeout test: libcurl %s words a connect timeout as "Failed to connect to … after N ms: Timeout was reached", which Guzzle maps to NetworkTimeoutException instead of ConnectTimeoutException. The test (CI-8 spec §9) needs libcurl >= 8.11, whose wording "Connection timed out after N milliseconds" Guzzle recognises.',
+                false === $libcurl ? '(unknown version)' : $libcurl['version'],
+            ));
+        }
+
         if ('Linux' === \PHP_OS_FAMILY) {
             // Linux drops a SYN while the accept queue is full, so the connect phase times out.
             $listener = \stream_socket_server(
@@ -146,19 +155,35 @@ final class FakeS3Harness
         \assert(\is_resource($process));
         $this->processes[] = $process;
 
-        $started = \microtime(true);
-        while (\proc_get_status($process)['running']) {
-            if (\microtime(true) - $started >= self::GUARD) {
+        // The guard clock starts at operation.php's "ready" line, so a slow child start-up (autoload, container
+        // compile) does not count against 10·T_test; start-up has its own deadline of the same length.
+        $spawned = \microtime(true);
+        $started = null;
+        while (($status = \proc_get_status($process))['running']) {
+            $now = \microtime(true);
+            if (null === $started && \str_starts_with((string) \file_get_contents($output), "ready\n")) {
+                $started = $now;
+            }
+            if (null === $started && $now - $spawned >= self::GUARD) {
                 \proc_terminate($process, 9);
-                Assert::fail(\sprintf('operation exceeded 10·T_test (%.1f s): "%s" killed after %.3f s.', self::GUARD, $operation, \microtime(true) - $started));
+                Assert::fail(\sprintf('"%s" did not start within %.1f s: %s', $operation, self::GUARD, \file_get_contents($this->workdir.'/operation.err')));
+            }
+            if (null !== $started && $now - $started >= self::GUARD) {
+                \proc_terminate($process, 9);
+                Assert::fail(\sprintf('operation exceeded 10·T_test (%.1f s): "%s" killed after %.3f s.', self::GUARD, $operation, $now - $started));
             }
             \usleep(10_000);
         }
 
         $lines = \file($output, \FILE_IGNORE_NEW_LINES | \FILE_SKIP_EMPTY_LINES) ?: [];
         $result = \json_decode((string) \end($lines), true);
-        if (!\is_array($result)) {
-            Assert::fail('The operation printed no result: '.\file_get_contents($output).\file_get_contents($this->workdir.'/operation.err'));
+        if (0 !== $status['exitcode'] || !\is_array($result)) {
+            Assert::fail(\sprintf(
+                'The operation exited with code %d and printed no JSON result: %s%s',
+                $status['exitcode'],
+                \file_get_contents($output),
+                \file_get_contents($this->workdir.'/operation.err'),
+            ));
         }
 
         return $result;
