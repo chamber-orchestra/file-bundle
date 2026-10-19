@@ -156,7 +156,8 @@ chamber_orchestra_file:
 ```
 
 `download()` writes the object body straight to the target path. If it fails (a timeout or a dropped connection
-mid-body, for example), the target file may hold a partial body. The bundle does not delete it, also not in the
+mid-body, for example), the target file may hold a partial body, or the body of the S3 error answer (XML) that the
+SDK wrote there. The bundle does not delete it, also not in the
 archive path (`Behaviour::Archive`): the caller deletes it.
 
 #### S3 timeouts and retries
@@ -201,9 +202,18 @@ chamber_orchestra_file:
     false. It carries no HTTP response, so `getResponse()` and `getStatusCode()` are `null`; the status is in the
     message and in `getResult()['@metadata']['statusCode']`.
 
-  `S3Storage` wraps both in the bundle's `RuntimeException`. An endpoint that redirects (for example a `307` to
-  another host) therefore fails every operation of a storage with `http`: check that the endpoint answers without
-  redirects before you set `http`. A storage without `http` follows redirects as in 8.1.4.
+  `upload()` and `download()` wrap both in the bundle's `RuntimeException`. `remove()` rethrows them unchanged: it
+  returns `false` only for `NoSuchKey`, so a 3xx never reads as a missing object. An endpoint that redirects (for
+  example a `307` to another host) therefore fails every operation of a storage with `http`: check that the endpoint
+  answers without redirects before you set `http`. A storage without `http` follows redirects as in 8.1.4.
+- With `http` set, the client never reuses a connection (`curl: [CURLOPT_FORBID_REUSE => true]` in the client's
+  `http` argument): every request opens a new TCP (and TLS) connection. Guzzle therefore never re-sends a request on
+  a dead reused connection, and one SDK attempt is one HTTP request. A storage without `http` reuses connections as
+  in 8.1.4.
+  - A storage with `http` requires `ext-curl`: without it, compiling the container fails with the `Error`
+    `Undefined constant "CURLOPT_FORBID_REUSE"`.
+  - Requests to the client of such a storage with the `stream` request option fail: Guzzle's `StreamHandler` rejects
+    a request with the `curl` option (`InvalidArgumentException`).
 
 ### Multiple Storages
 

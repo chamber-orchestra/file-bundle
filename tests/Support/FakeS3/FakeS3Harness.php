@@ -176,14 +176,15 @@ final class FakeS3Harness
 
     /**
      * Runs one S3Storage operation ("upload" of a random file of $uploadSize bytes, or "download") in a child process.
+     * With $warmUp, the child first downloads once through the same storage, outside the guard and the attempt count.
      *
      * @param array<string, mixed> $storage the `storages.<name>` config
      *
      * @return array{elapsed: float, attempts: int, chain: list<string>, message: string|null, awsErrorCode: string|null, connectionError: bool|null, sourceSha256: string|null, targetSize: int|null, targetSha256: string|null}
      */
-    public function runOperation(array $storage, string $operation, int $uploadSize = 1024): array
+    public function runOperation(array $storage, string $operation, int $uploadSize = 1024, bool $warmUp = false): array
     {
-        $spec = \json_encode(['storage' => $storage, 'operation' => $operation, 'workdir' => $this->workdir, 'uploadSize' => $uploadSize], \JSON_THROW_ON_ERROR);
+        $spec = \json_encode(['storage' => $storage, 'operation' => $operation, 'workdir' => $this->workdir, 'uploadSize' => $uploadSize, 'warmUp' => $warmUp], \JSON_THROW_ON_ERROR);
         $output = $this->workdir.'/operation.out';
         $process = \proc_open(
             [\PHP_BINARY, __DIR__.'/operation.php', $spec],

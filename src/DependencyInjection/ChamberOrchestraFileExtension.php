@@ -142,6 +142,8 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
                 'timeout' => $storage['http']['timeout'],
                 // R-B7: never follow a redirect, so one SDK attempt is one transfer (S3RedirectGuard turns the 3xx into an error).
                 'allow_redirects' => false,
+                // R-B8: never reuse a connection, so Guzzle never re-sends on a dead reused one (errno 65); needs ext-curl.
+                'curl' => [\CURLOPT_FORBID_REUSE => true],
             ];
         }
 

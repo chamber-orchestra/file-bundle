@@ -45,8 +45,13 @@ class ChamberOrchestraFileExtensionTest extends TestCase
     ];
 
     private const array HTTP = ['connect_timeout' => 5, 'timeout' => 10];
-    /** The `http` client argument for HTTP (plan §3 without R-B8's `curl`). */
-    private const array HTTP_ARGUMENT = ['connect_timeout' => 5.0, 'timeout' => 10.0, 'allow_redirects' => false];
+    /** The `http` client argument for HTTP (plan §3, AC-3: R-B7's `allow_redirects`, R-B8's `curl`). */
+    private const array HTTP_ARGUMENT = [
+        'connect_timeout' => 5.0,
+        'timeout' => 10.0,
+        'allow_redirects' => false,
+        'curl' => [\CURLOPT_FORBID_REUSE => true],
+    ];
     private const array RETRIES = ['mode' => 'standard', 'max_attempts' => 2];
     private ContainerBuilder $container;
 

@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\File\File;
 
 require \dirname(__DIR__, 3).'/vendor/autoload.php';
 
-/** @var array{storage: array<string, mixed>, operation: string, workdir: string, uploadSize: int} $spec */
+/** @var array{storage: array<string, mixed>, operation: string, workdir: string, uploadSize: int, warmUp: bool} $spec */
 $spec = \json_decode($argv[1], true, 512, \JSON_THROW_ON_ERROR);
 
 $container = new ContainerBuilder();
@@ -53,6 +53,11 @@ $source = $spec['workdir'].'/violin_concerto.mp3';
 $target = $spec['workdir'].'/moonlight_sonata.mp3';
 if ('upload' === $spec['operation']) {
     \file_put_contents($source, \random_bytes($spec['uploadSize']));
+}
+if ($spec['warmUp']) {
+    // One request on the same client first, so its pool holds a keep-alive connection unless R-B8 forbids reuse.
+    $storage->download('recordings/violin_concerto.mp3', $target);
+    $attempts = 0;
 }
 $exception = null;
 echo "ready\n"; // FakeS3Harness starts its 10·T_test guard here
