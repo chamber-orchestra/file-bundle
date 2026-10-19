@@ -15,6 +15,8 @@ use Aws\S3\S3Client;
 use ChamberOrchestra\FileBundle\DependencyInjection\ChamberOrchestraFileExtension;
 use ChamberOrchestra\FileBundle\Handler\Handler;
 use ChamberOrchestra\FileBundle\Storage\FileSystemStorage;
+use ChamberOrchestra\FileBundle\Storage\S3RedirectGuard;
+use ChamberOrchestra\FileBundle\Storage\S3Storage;
 use ChamberOrchestra\FileBundle\Storage\StorageResolver;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -43,6 +45,8 @@ class ChamberOrchestraFileExtensionTest extends TestCase
     ];
 
     private const array HTTP = ['connect_timeout' => 5, 'timeout' => 10];
+    /** The `http` client argument for HTTP (plan §3 without R-B8's `curl`). */
+    private const array HTTP_ARGUMENT = ['connect_timeout' => 5.0, 'timeout' => 10.0, 'allow_redirects' => false];
     private const array RETRIES = ['mode' => 'standard', 'max_attempts' => 2];
     private ContainerBuilder $container;
 
@@ -95,9 +99,10 @@ class ChamberOrchestraFileExtensionTest extends TestCase
         $client = self::scoresClient(self::load(['storages' => ['scores' => self::SCORES_S3 + ['http' => self::HTTP, 'retries' => self::RETRIES]]]));
 
         self::assertSame([self::CLIENT_ARGUMENTS_8_1_4 + [
-            'http' => ['connect_timeout' => 5.0, 'timeout' => 10.0],
+            'http' => self::HTTP_ARGUMENT,
             'retries' => ['mode' => 'standard', 'max_attempts' => 2],
         ]], $client->getArguments());
+        self::assertSame([S3RedirectGuard::class, 'register'], $client->getConfigurator());
     }
 
     public function testOnlyRetriesBlockPassesOnlyRetries(): void
@@ -114,8 +119,49 @@ class ChamberOrchestraFileExtensionTest extends TestCase
         $client = self::scoresClient(self::load(['storages' => ['scores' => self::SCORES_S3 + ['http' => self::HTTP]]]));
 
         self::assertSame([self::CLIENT_ARGUMENTS_8_1_4 + [
-            'http' => ['connect_timeout' => 5.0, 'timeout' => 10.0],
+            'http' => self::HTTP_ARGUMENT,
         ]], $client->getArguments());
+    }
+
+    public function testHttpAddsAllowRedirectsFalseAndRedirectGuard(): void
+    {
+        $client = self::scoresClient(self::load(['storages' => ['scores' => self::SCORES_S3 + ['http' => self::HTTP]]]));
+        $arguments = $client->getArgument(0);
+        \assert(\is_array($arguments));
+
+        self::assertSame(self::HTTP_ARGUMENT, $arguments['http']);
+        self::assertSame([S3RedirectGuard::class, 'register'], $client->getConfigurator());
+        self::assertSame([], $client->getMethodCalls());
+    }
+
+    public function testRetriesOnlyHasNoRedirectHandling(): void
+    {
+        $client = self::scoresClient(self::load(['storages' => ['scores' => self::SCORES_S3 + ['retries' => self::RETRIES]]]));
+
+        self::assertSame([self::CLIENT_ARGUMENTS_8_1_4 + ['retries' => ['mode' => 'standard', 'max_attempts' => 2]]], $client->getArguments());
+        self::assertNull($client->getConfigurator());
+    }
+
+    /**
+     * On a built client the guard is one `init` step, outside `retry` and `s3.permanent_redirect` in `sign` (spec §3.3);
+     * a storage without `http` has no guard.
+     */
+    public function testRedirectGuardIsOneInitStepOutsideRetry(): void
+    {
+        $container = self::load(['storages' => [
+            'scores' => self::SCORES_S3 + ['http' => self::HTTP, 'retries' => self::RETRIES],
+            'etudes' => self::SCORES_S3,
+        ]]);
+        foreach (['scores', 'etudes'] as $name) {
+            $container->getDefinition('chamber_orchestra_file.storage.'.$name)->setPublic(true);
+        }
+        $container->compile();
+
+        $guarded = self::handlerSteps($container, 'scores');
+        self::assertSame(['init'], $guarded[S3RedirectGuard::NAME] ?? null);
+        self::assertSame(['sign'], $guarded['retry'] ?? null);
+        self::assertSame(['sign'], $guarded['s3.permanent_redirect'] ?? null);
+        self::assertArrayNotHasKey(S3RedirectGuard::NAME, self::handlerSteps($container, 'etudes'));
     }
 
     public function testFileSystemStorageWithKeysRegistersNoClient(): void
@@ -151,6 +197,24 @@ class ChamberOrchestraFileExtensionTest extends TestCase
         new ChamberOrchestraFileExtension()->load($configs, $container);
 
         return $container;
+    }
+
+    /**
+     * The handler-list steps of a built storage's client, by middleware name.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function handlerSteps(ContainerBuilder $container, string $storage): array
+    {
+        $client = new \ReflectionProperty(S3Storage::class, 'client')->getValue($container->get('chamber_orchestra_file.storage.'.$storage));
+        \assert($client instanceof S3Client);
+        \preg_match_all('/Step: (\w+), Name: ([^,]+),/', (string) $client->getHandlerList(), $matches, \PREG_SET_ORDER);
+        $steps = [];
+        foreach ($matches as [, $step, $name]) {
+            $steps[$name][] = $step;
+        }
+
+        return $steps;
     }
 
     private static function scoresClient(ContainerBuilder $container): Definition

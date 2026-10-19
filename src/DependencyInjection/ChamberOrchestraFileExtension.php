@@ -16,6 +16,7 @@ use ChamberOrchestra\FileBundle\Form\Type\FileType;
 use ChamberOrchestra\FileBundle\Handler\Handler;
 use ChamberOrchestra\FileBundle\Serializer\Normalizer\FileNormalizer;
 use ChamberOrchestra\FileBundle\Storage\FileSystemStorage;
+use ChamberOrchestra\FileBundle\Storage\S3RedirectGuard;
 use ChamberOrchestra\FileBundle\Storage\S3Storage;
 use ChamberOrchestra\FileBundle\Storage\StorageResolver;
 use Symfony\Component\Config\FileLocator;
@@ -139,6 +140,8 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
             $clientArgs['http'] = [
                 'connect_timeout' => $storage['http']['connect_timeout'],
                 'timeout' => $storage['http']['timeout'],
+                // R-B7: never follow a redirect, so one SDK attempt is one transfer (S3RedirectGuard turns the 3xx into an error).
+                'allow_redirects' => false,
             ];
         }
 
@@ -150,6 +153,9 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
         }
 
         $clientDefinition = new Definition(S3Client::class, [$clientArgs]);
+        if (isset($storage['http'])) {
+            $clientDefinition->setConfigurator([S3RedirectGuard::class, 'register']);
+        }
         $container->setDefinition($serviceId.'.client', $clientDefinition);
 
         $s3Definition = new Definition(S3Storage::class);

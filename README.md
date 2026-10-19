@@ -193,6 +193,17 @@ chamber_orchestra_file:
     outside these timeouts and retries, so a bounded operation time needs static `credentials`;
   - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option);
   - DNS resolution, unless libcurl uses an asynchronous resolver.
+- With `http` set, the client does not follow redirects (`allow_redirects: false`), and a step in the `init` step of
+  the client's handler list turns a 3xx answer into an error that is not retried (one HTTP request):
+  - `301` → `Aws\S3\Exception\PermanentRedirectException` (the SDK's own handling);
+  - any other 3xx (`302`, `307`, …, with or without `Location`) → exactly `Aws\S3\Exception\S3Exception` without an
+    AWS error code (`getAwsErrorCode()` is `null`, so it never reads as `NoSuchKey`) and with `isConnectionError()`
+    false. It carries no HTTP response, so `getResponse()` and `getStatusCode()` are `null`; the status is in the
+    message and in `getResult()['@metadata']['statusCode']`.
+
+  `S3Storage` wraps both in the bundle's `RuntimeException`. An endpoint that redirects (for example a `307` to
+  another host) therefore fails every operation of a storage with `http`: check that the endpoint answers without
+  redirects before you set `http`. A storage without `http` follows redirects as in 8.1.4.
 
 ### Multiple Storages
 

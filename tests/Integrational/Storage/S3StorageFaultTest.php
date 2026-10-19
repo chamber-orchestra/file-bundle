@@ -28,9 +28,7 @@ use Tests\Support\FakeS3\FakeS3Harness;
  */
 final class S3StorageFaultTest extends TestCase
 {
-    private const int ATTEMPTS = 2;
-    // A·T_test + D_test + 1 s = 4 s: in `standard` mode the SDK's single retry delay at A = 2 is at most 2 s (RetryMiddlewareV2::exponentialDelayWithJitter).
-    private const float UPPER_BOUND = self::ATTEMPTS * FakeS3Harness::T_TEST + 2.0 + 1.0;
+    private const int ATTEMPTS = FakeS3Harness::ATTEMPTS;
     /** At least 1 000 000 B, so Guzzle streams the body (plan G-6); below 1 048 576 B, so no `Expect: 100-Continue` (G-10). */
     private const int STREAMED_UPLOAD_SIZE = 1_040_000;
 
@@ -58,24 +56,24 @@ final class S3StorageFaultTest extends TestCase
     #[DataProvider('operations')]
     public function testConnectTimeout(string $operation, string $method): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->connectTimeoutEndpoint()), $operation);
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->connectTimeoutEndpoint()), $operation);
 
         $this->assertTransferFailure($result, ConnectTimeoutException::class);
         self::assertSame(self::ATTEMPTS, $result['attempts']);
         self::assertGreaterThanOrEqual(self::ATTEMPTS * FakeS3Harness::C_TEST, $result['elapsed']);
-        self::assertLessThanOrEqual(self::UPPER_BOUND, $result['elapsed']);
+        self::assertLessThanOrEqual(FakeS3Harness::UPPER_BOUND, $result['elapsed']);
     }
 
     #[DataProvider('operations')]
     public function testAcceptedAndSilent(string $operation, string $method): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->startServer('silent')), $operation);
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->startServer('silent')), $operation);
 
         $this->assertTransferFailure($result, NetworkTimeoutException::class);
         self::assertSame(\array_fill(0, self::ATTEMPTS, $method), $this->harness->requestMethods());
         self::assertSame(self::ATTEMPTS, $result['attempts']);
         self::assertGreaterThanOrEqual(self::ATTEMPTS * FakeS3Harness::T_TEST, $result['elapsed']);
-        self::assertLessThanOrEqual(self::UPPER_BOUND, $result['elapsed']);
+        self::assertLessThanOrEqual(FakeS3Harness::UPPER_BOUND, $result['elapsed']);
     }
 
     /**
@@ -84,19 +82,19 @@ final class S3StorageFaultTest extends TestCase
     #[DataProvider('operations')]
     public function testDripFeed(string $operation, string $method): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->startServer('drip')), $operation);
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->startServer('drip')), $operation);
 
         $this->assertTransferFailure($result, ResponseTimeoutException::class);
         self::assertSame(\array_fill(0, self::ATTEMPTS, $method), $this->harness->requestMethods());
         self::assertSame(self::ATTEMPTS, $result['attempts']);
         self::assertGreaterThanOrEqual(self::ATTEMPTS * FakeS3Harness::T_TEST, $result['elapsed']);
-        self::assertLessThanOrEqual(self::UPPER_BOUND, $result['elapsed']);
+        self::assertLessThanOrEqual(FakeS3Harness::UPPER_BOUND, $result['elapsed']);
     }
 
     #[DataProvider('operations')]
     public function testSingleAttemptDoesNotRetry(string $operation, string $method): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->startServer('silent'), 1), $operation);
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->startServer('silent'), 1), $operation);
 
         $this->assertTransferFailure($result, NetworkTimeoutException::class);
         self::assertSame([$method], $this->harness->requestMethods());
@@ -122,7 +120,7 @@ final class S3StorageFaultTest extends TestCase
     #[DataProvider('recoveries')]
     public function testServiceUnavailableThenSuccess(string $operation, string $method): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->startServer('unavailable_then_ok')), $operation, self::STREAMED_UPLOAD_SIZE);
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->startServer('unavailable_then_ok')), $operation, self::STREAMED_UPLOAD_SIZE);
         $context = (string) \json_encode($result);
 
         self::assertSame([], $result['chain'], $context);
@@ -143,7 +141,7 @@ final class S3StorageFaultTest extends TestCase
      */
     public function testNoSuchKeyIsSingleAttemptWithCode(): void
     {
-        $result = $this->harness->runOperation($this->storage($this->harness->startServer('no_such_key')), 'download');
+        $result = $this->harness->runOperation(FakeS3Harness::storage($this->harness->startServer('no_such_key')), 'download');
         $context = (string) \json_encode($result);
 
         self::assertSame(RuntimeException::class, $result['chain'][0] ?? null, $context);
@@ -152,23 +150,6 @@ final class S3StorageFaultTest extends TestCase
         self::assertFalse($result['connectionError'], $context);
         self::assertSame(1, $result['attempts'], $context);
         self::assertSame(['GET'], $this->harness->requestMethods());
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function storage(string $endpoint, int $maxAttempts = self::ATTEMPTS): array
-    {
-        return [
-            'driver' => 's3',
-            'bucket' => 'orchestra',
-            'region' => 'eu-west-2',
-            'endpoint' => $endpoint,
-            'path_style' => true,
-            'credentials' => ['key' => 'conductor', 'secret' => 'baton'],
-            'http' => ['connect_timeout' => FakeS3Harness::C_TEST, 'timeout' => FakeS3Harness::T_TEST],
-            'retries' => ['mode' => 'standard', 'max_attempts' => $maxAttempts],
-        ];
     }
 
     /**

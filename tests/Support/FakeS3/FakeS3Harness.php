@@ -24,6 +24,13 @@ final class FakeS3Harness
     public const float T_TEST = 0.5;
     public const float C_TEST = 0.25;
     public const float GUARD = 10 * self::T_TEST;
+    /** SDK attempts (`retries.max_attempts`) of the storage that storage() builds. */
+    public const int ATTEMPTS = 2;
+    /**
+     * The one upper bound of an operation's time (plan §3): A·T_test + 2 s + 1 s = 4 s. In `standard` mode the SDK's
+     * single retry delay at A = 2 is at most 2 s (RetryMiddlewareV2::exponentialDelayWithJitter).
+     */
+    public const float UPPER_BOUND = self::ATTEMPTS * self::T_TEST + 2.0 + 1.0;
     /** The body of a successful GET; shorter than the server's error bodies, so a target left untruncated shows. */
     public const string OBJECT_BODY = 'Clair de lune';
 
@@ -40,12 +47,31 @@ final class FakeS3Harness
     }
 
     /**
-     * Starts server.php with a scenario and returns its endpoint.
+     * The `storages.<name>` config of the tests: timeouts C_test / T_test, `standard` retries, static credentials.
+     *
+     * @return array<string, mixed>
      */
-    public function startServer(string $scenario): string
+    public static function storage(string $endpoint, int $maxAttempts = self::ATTEMPTS): array
+    {
+        return [
+            'driver' => 's3',
+            'bucket' => 'orchestra',
+            'region' => 'eu-west-2',
+            'endpoint' => $endpoint,
+            'path_style' => true,
+            'credentials' => ['key' => 'conductor', 'secret' => 'baton'],
+            'http' => ['connect_timeout' => self::C_TEST, 'timeout' => self::T_TEST],
+            'retries' => ['mode' => 'standard', 'max_attempts' => $maxAttempts],
+        ];
+    }
+
+    /**
+     * Starts server.php with a scenario and returns its endpoint; $location is the `Location` of a redirect scenario.
+     */
+    public function startServer(string $scenario, ?string $location = null): string
     {
         $process = \proc_open(
-            [\PHP_BINARY, __DIR__.'/server.php', $scenario, $this->workdir.'/journal.jsonl', (string) self::T_TEST, self::OBJECT_BODY],
+            [\PHP_BINARY, __DIR__.'/server.php', $scenario, $this->workdir.'/journal.jsonl', (string) self::T_TEST, self::OBJECT_BODY, ...(null !== $location ? [$location] : [])],
             [1 => ['pipe', 'w'], 2 => ['file', $this->workdir.'/server.err', 'w']],
             $pipes,
         );
