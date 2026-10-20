@@ -30,7 +30,7 @@ Supports local filesystem and Amazon S3 storage backends, multiple named storage
 ## Requirements
 
 - PHP 8.5+
-- Symfony 8.0
+- Symfony 8.1
 - Doctrine ORM
 
 ## Installation
@@ -155,6 +155,74 @@ chamber_orchestra_file:
             endpoint: 'http://localhost:9000' # optional, for MinIO/localstack
 ```
 
+`download()` writes the object body straight to the target path. If it fails (a timeout or a dropped connection
+mid-body, for example), the target file may hold a partial body, or the body of the S3 error answer (XML) that the
+SDK wrote there. The bundle does not delete it, also not in the
+archive path (`Behaviour::Archive`): the caller deletes it.
+
+#### S3 timeouts and retries
+
+Two optional blocks set the HTTP timeouts and the retry policy of the storage's `S3Client`:
+
+```yaml
+chamber_orchestra_file:
+    storages:
+        default:
+            driver: s3
+            bucket: my-recordings-bucket
+            region: eu-west-2
+            credentials:
+                key: '%env(S3_KEY)%'
+                secret: '%env(S3_SECRET)%'
+            http:
+                connect_timeout: 5   # seconds, finite, >= 0.001: the connection phase only
+                timeout: 10          # seconds, finite, >= 0.001: the whole transfer, connection included
+            retries:
+                mode: standard       # legacy, standard or adaptive
+                max_attempts: 2      # >= 1, the first attempt included
+```
+
+- If a block is set, every key of that block is required. A missing, unknown or invalid key (a timeout that is
+  infinite (`.inf`) or below `0.001`, a non-number, a mode outside the list, a non-integer or < 1 `max_attempts`)
+  fails configuration processing with an `InvalidConfigurationException` that names the key path, e.g.
+  `chamber_orchestra_file.storages.default.http`.
+- The timeouts must be finite and at least `0.001` because Guzzle cannot use other values: Guzzle 7 silently disables
+  such a timeout, and Guzzle 8 rejects every request. To have no timeout, leave `http` unset.
+- Write the values as literals. An environment placeholder (`%env(float:…)%`, `%env(int:…)%`) fails this validation:
+  Symfony validates a placeholder with a dummy value (0 for `float` and `int`), which is below `0.001` (or below 1
+  for `max_attempts`).
+- A block that is not set is not passed to the client: without both blocks the `S3Client` arguments are exactly those
+  of 8.1.4, and the SDK defaults apply.
+- The `file_system` driver accepts and ignores both blocks, so an environment can override an `s3` storage with
+  `driver: file_system` without removing them.
+- The timeouts are enforced by Guzzle's curl handler (`ext-curl`). They do not bound:
+  - credential resolution when `credentials` is not set: the SDK then walks its provider chain (env, ini, ECS, IMDS)
+    outside these timeouts and retries, so a bounded operation time needs static `credentials`;
+  - requests made through the PHP stream handler (no `ext-curl`, or the `stream` request option); with `http` set,
+    a missing `ext-curl` fails the container compilation, and on Guzzle 8+ the `stream` request option fails the
+    request (see the `CURLOPT_FORBID_REUSE` item below);
+  - DNS resolution, unless libcurl uses an asynchronous resolver.
+- With `http` set, the client does not follow redirects (`allow_redirects: false`), and a step in the `init` step of
+  the client's handler list turns a 3xx answer into an error that is not retried (one HTTP request):
+  - `301` → `Aws\S3\Exception\PermanentRedirectException` (the SDK's own handling);
+  - any other 3xx (`302`, `307`, …, with or without `Location`) → exactly `Aws\S3\Exception\S3Exception` without an
+    AWS error code (`getAwsErrorCode()` is `null`, so it never reads as `NoSuchKey`) and with `isConnectionError()`
+    false. It carries no HTTP response, so `getResponse()` and `getStatusCode()` are `null`; the status is in the
+    message and in `getResult()['@metadata']['statusCode']`.
+
+  `upload()` and `download()` wrap both in the bundle's `RuntimeException`. `remove()` rethrows them unchanged: it
+  returns `false` only for `NoSuchKey`, so a 3xx never reads as a missing object. An endpoint that redirects (for
+  example a `307` to another host) therefore fails every operation of a storage with `http`: check that the endpoint
+  answers without redirects before you set `http`. A storage without `http` follows redirects as in 8.1.4.
+- With `http` set, the client never reuses a connection (`curl: [CURLOPT_FORBID_REUSE => true]` in the client's
+  `http` argument): every request opens a new TCP (and TLS) connection. Guzzle therefore never re-sends a request on
+  a dead reused connection, and one SDK attempt is one HTTP request. A storage without `http` reuses connections as
+  in 8.1.4.
+  - A storage with `http` requires `ext-curl`: without it, compiling the container fails with the `Error`
+    `Undefined constant "CURLOPT_FORBID_REUSE"`.
+  - On Guzzle 8+, requests to the client of such a storage with the `stream` request option fail: Guzzle's
+    `StreamHandler` rejects a request with the `curl` option (`InvalidArgumentException`).
+
 ### Multiple Storages
 
 Define as many storages as you need. Each entity can select which storage to use via the `#[Uploadable]` attribute:
@@ -239,6 +307,13 @@ chamber_orchestra_file:
 | `storages.*.bucket` | `string\|null` | `null` | S3 bucket name (required for s3 driver) |
 | `storages.*.region` | `string\|null` | `null` | AWS region (required for s3 driver) |
 | `storages.*.endpoint` | `string\|null` | `null` | Custom S3 endpoint for MinIO/localstack |
+| `storages.*.path_style` | `bool` | `false` | Path-style addressing (LocalStack and some S3-compatible services) |
+| `storages.*.credentials.key` | `string` | — | S3 access key; required when `credentials` is set. Without `credentials` the SDK provider chain is used |
+| `storages.*.credentials.secret` | `string` | — | S3 secret key; required when `credentials` is set |
+| `storages.*.http.connect_timeout` | `float` | — | Connection phase timeout, seconds, finite, >= 0.001; required when `http` is set (s3 driver only) |
+| `storages.*.http.timeout` | `float` | — | Whole transfer timeout including the connection, seconds, finite, >= 0.001; required when `http` is set (s3 driver only) |
+| `storages.*.retries.mode` | `string` | — | SDK retry mode: `legacy`, `standard` or `adaptive`; required when `retries` is set (s3 driver only) |
+| `storages.*.retries.max_attempts` | `int` | — | Total attempts, the first one included, >= 1; required when `retries` is set (s3 driver only) |
 | `archive_path` | `string` | `%kernel.project_dir%/var/archive` | Local directory for archived files (`Behaviour::Archive`) |
 
 ## Entity Attributes

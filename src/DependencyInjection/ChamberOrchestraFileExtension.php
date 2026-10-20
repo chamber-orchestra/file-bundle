@@ -16,6 +16,7 @@ use ChamberOrchestra\FileBundle\Form\Type\FileType;
 use ChamberOrchestra\FileBundle\Handler\Handler;
 use ChamberOrchestra\FileBundle\Serializer\Normalizer\FileNormalizer;
 use ChamberOrchestra\FileBundle\Storage\FileSystemStorage;
+use ChamberOrchestra\FileBundle\Storage\S3RedirectGuard;
 use ChamberOrchestra\FileBundle\Storage\S3Storage;
 use ChamberOrchestra\FileBundle\Storage\StorageResolver;
 use Symfony\Component\Config\FileLocator;
@@ -103,7 +104,7 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
     }
 
     /**
-     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null, path_style?: bool, credentials?: array{key: string, secret: string}} $storage
+     * @param array{driver: string, path: string, uri_prefix: string|null, enabled?: bool, bucket?: string|null, region?: string|null, endpoint?: string|null, path_style?: bool, credentials?: array{key: string, secret: string}, http?: array{connect_timeout: float, timeout: float}, retries?: array{mode: string, max_attempts: int}} $storage
      */
     private function registerS3Storage(ContainerBuilder $container, string $serviceId, string $name, array $storage): void
     {
@@ -134,7 +135,29 @@ final class ChamberOrchestraFileExtension extends ConfigurableExtension
             ];
         }
 
+        // Absent blocks are not passed, so the client stays identical to 8.1.4 (R-B3).
+        if (isset($storage['http'])) {
+            $clientArgs['http'] = [
+                'connect_timeout' => $storage['http']['connect_timeout'],
+                'timeout' => $storage['http']['timeout'],
+                // R-B7: never follow a redirect, so one SDK attempt is one transfer (S3RedirectGuard turns the 3xx into an error).
+                'allow_redirects' => false,
+                // R-B8: never reuse a connection, so Guzzle never re-sends on a dead reused one (errno 65); needs ext-curl.
+                'curl' => [\CURLOPT_FORBID_REUSE => true],
+            ];
+        }
+
+        if (isset($storage['retries'])) {
+            $clientArgs['retries'] = [
+                'mode' => $storage['retries']['mode'],
+                'max_attempts' => $storage['retries']['max_attempts'],
+            ];
+        }
+
         $clientDefinition = new Definition(S3Client::class, [$clientArgs]);
+        if (isset($storage['http'])) {
+            $clientDefinition->setConfigurator([S3RedirectGuard::class, 'register']);
+        }
         $container->setDefinition($serviceId.'.client', $clientDefinition);
 
         $s3Definition = new Definition(S3Storage::class);
