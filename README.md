@@ -7,7 +7,7 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/chamber-orchestra/file-bundle.svg)](https://packagist.org/packages/chamber-orchestra/file-bundle)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PHP 8.5+](https://img.shields.io/badge/PHP-8.5%2B-777BB4.svg)](https://www.php.net/)
-[![Symfony 8.0](https://img.shields.io/badge/Symfony-8.0-000000.svg)](https://symfony.com/)
+[![Symfony 8.2](https://img.shields.io/badge/Symfony-8.2-000000.svg)](https://symfony.com/)
 
 A Symfony bundle for automatic file upload and image upload handling on Doctrine ORM entities. Mark your entity with PHP attributes, and the bundle transparently uploads, injects, and removes files through Doctrine lifecycle events.
 
@@ -30,7 +30,7 @@ Supports local filesystem and Amazon S3 storage backends, multiple named storage
 ## Requirements
 
 - PHP 8.5+
-- Symfony 8.1
+- Symfony 8.2
 - Doctrine ORM
 
 ## Installation

@@ -142,7 +142,7 @@ Bundle configuration key is `chamber_orchestra_file`. Storages are defined under
 
 ## Dependencies
 
-- Requires PHP 8.5, Symfony 8.1 components (`dependency-injection`, `config`, `framework-bundle`, `runtime`, `options-resolver`), and `chamber-orchestra/metadata-bundle` 8.1
+- Requires PHP 8.5, Symfony 8.2 components (`dependency-injection`, `config`, `framework-bundle`, `runtime`, `options-resolver`), and `chamber-orchestra/metadata-bundle` 8.1
 - Dev: PHPUnit 13, `symfony/test-pack`, `symfony/mime`, `symfony/serializer`, `symfony/form`, `symfony/validator`, `aws/aws-sdk-php`, `friendsofphp/php-cs-fixer`, `phpstan/phpstan`
 - Suggests: `aws/aws-sdk-php` (for S3 storage driver), `symfony/form` (for FileType form type), `symfony/validator` (for file validation constraints), `ext-curl` (required for an S3 storage with `http`)
 - Main branch is `main`
